@@ -39,5 +39,5 @@ uncore的计数寄存器和控制寄存器的可编程接口分种地址空间�
 
 ## Refreence
 
-[1] xeon-e5-2600-uncore-guide
-[2] [PERF EVENT 硬件篇续](https://ata.alibaba-inc.com/articles/104772)
+1. xeon-e5-2600-uncore-guide
+2. [PERF EVENT 硬件篇续](https://ata.alibaba-inc.com/articles/104772)

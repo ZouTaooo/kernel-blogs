@@ -151,4 +151,4 @@ MC_CHy_PCI_PMON_CTR{FIXED,3:0}的字段定义如下：
 
 ## 参考
 
-[1] xeon-e5-2600-uncore-guide.pdf
+1. xeon-e5-2600-uncore-guide
