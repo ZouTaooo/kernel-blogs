@@ -1,5 +1,6 @@
 # resctrl实现总览
-本文从resctrl的资源分配和监控的角度对内核源码实现进行了分析，resctrl中有两种group，控制组和监控组，控制组（CTRL group）进行资源分配，监控组（mon group）负责进行指标采集，而resctrl中将控制组和监控组进行了组合，被称作CTRL-MON group。resctrl根目录就是一个CTRL-MON group，这种组兼顾了资源分配规则和监控。
+本文从resctrl的资源分配和监控的角度对内核源码实现进行了分析，参考的kernel版本为4.19.287。
+resctrl中有两种group，控制组和监控组，控制组（CTRL group）进行资源分配，监控组（mon group）负责进行指标采集，而resctrl中将控制组和监控组进行了组合，被称作CTRL-MON group。resctrl根目录就是一个CTRL-MON group，这种组兼顾了资源分配规则和监控。
 
 每个cpu在不同的时刻会运行不同task，而resctrl为了支持复杂的资源分配和监控逻辑，每个cpu不同的时刻会存在不同的状态。
 下面这个结构体是per-cpu的，每个cpu都拥有`default_rmid`、`default_closid`以及`cur_rmid`、`cur_closid`。这个设计非常关键，正是这个结构体实现了resctrl的核心逻辑。
