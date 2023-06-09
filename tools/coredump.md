@@ -14,6 +14,7 @@ vim /etc/security/limits.conf
 ```
 
 ### 设置coredump文件目录
+
 ```shell
 cat /proc/sys/kernel/core_pattern
 echo /var/log/%e.core.%p > /proc/sys/kernel/core_pattern
@@ -29,6 +30,7 @@ echo /var/log/%e.core.%p > /proc/sys/kernel/core_pattern
 ```
 
 ## 编译选项
+
 编译器取消编译器优化并且加上-g，保留符号信息，在debug时才能拿到正确的地址和行号。
 
 ```bash

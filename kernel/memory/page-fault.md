@@ -373,6 +373,7 @@ __bad_area(struct pt_regs *regs, unsigned long error_code,
 ```
 
 ### 权限检查
+
 当地址合法以后，进入`good_area`处理流程，`good area`是`__do_page_fault`的一个goto lable。第一步是进行权限检查。
 
 ```c
@@ -448,6 +449,7 @@ bad_area_access_error(struct pt_regs *regs, unsigned long error_code,
 ```
 
 ### 处理page fault
+
 此时发现地址、权限都没有问题，可以考虑处理异常，建立映射、将page从文件交换区swap进内存或者是分配内存等操作。
 
 按照vm是否使用的hugetlb分为`hugetlb_fault`和`__handle_mm_fault`两种处理操作。
@@ -486,6 +488,7 @@ vm_fault_t handle_mm_fault(struct vm_area_struct *vma, unsigned long address,
 ```
 
 #### hugetlb的处理
+
 看着比较复杂 等以后研究了hugetlb的实现机理再回来看。
 
 ```c
@@ -629,6 +632,7 @@ out_mutex:
 ```
 
 #### normal size page的处理
+
 struct vm_fault 这个结构体记录了最后要处理的page的page table的等信息，对于每一级页表，如果映射路径中存在的entry不在需要进行alloc，如果分配失败则抛出VM_FAULT_OOM。
 
 ```c
@@ -690,6 +694,7 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 ```
 
 ### 总结一下
+
 用户空间的地址，出现缺页异常的处理过程：
 1. 地址检查
    1. 处于内核地址、或者处于非栈顶部和堆底部之间的内存，此时访问非法内存
@@ -708,5 +713,6 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 
 
 # reference
+
 [1] 《Linux内核源代码情景分析》
 [2] [source code-4.19.20](https://elixir.bootlin.com/linux/v4.19.20/source)
