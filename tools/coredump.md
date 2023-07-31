@@ -1,9 +1,12 @@
-# coredump
+#! https://zhuanlan.zhihu.com/p/647034304
+# coredump-文件生成配置
+
 核心转储文件，可以在程序dump时将当时的程序状态记录下，配合gdb工具进行分析。适合在长期运行的程序挂掉时进行分析。
 
 ## 开启coredump
 
 ### 设置coredump文件的limit
+
 ```shell
 # 临时设置
 ulimit -c unlimited
