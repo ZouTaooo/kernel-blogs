@@ -60,18 +60,18 @@ typedef struct pglist_data {
 
 ```
 
-- node_zones: 内存区域数组
-- node_zonelists: 备选Node和Zone列表
-- nr_zones: 内存区域个数
-- node_mem_map: Node中的所有页帧
-- bdata: struct bootmem_data是内核启动时使用的自举内存分配器boot memory allocator，bdata指向该实例。
-- node_start_pfn: Node中第一个page的逻辑编号，page的逻辑编号是**全局唯一**。
-- node_present_pages: Node中的page数目。
-- node_spanned_pages: Node以地址长度和page大小计算的page数目（包括空洞），和node_present_pages不一定相同。
-- node_id: 全局的Node ID
-- kswapd_wait: kswapd的等待队列
-- kswapd: 负责该Node的kswapd进程的`task_struct`
-- kswapd_max_order: 页交换子系统实现相关。
+- `node_zones`: 内存区域数组
+- `node_zonelists`: 备选Node和Zone列表
+- `nr_zones`: 内存区域个数
+- `node_mem_map`: Node中的所有页帧
+- `bdata`: `struct bootmem_data`是内核启动时使用的自举内存分配器boot memory allocator，`bdata`指向该实例。
+- `node_start_pfn`: Node中第一个page的逻辑编号，page的逻辑编号是**全局唯一**。
+- `node_present_pages`: Node中的page数目。
+- `node_spanned_pages`: Node以地址长度和page大小计算的page数目（包括空洞），和`node_present_pages`不一定相同。
+- `node_id`: 全局的Node ID
+- `kswapd_wait`: kswapd的等待队列
+- `kswapd`: 负责该Node的kswapd进程的`task_struct`
+- `kswapd_max_order`: 页交换子系统实现相关。
 
 在内核所有Node的状态通过位图来表示，每一个状态对应一个位图，位图中的每一个bit对应Node。
 
@@ -91,13 +91,13 @@ enum node_states {
 
 ```
 
-- N_POSSIBLE: 某个时刻后能够变成ONLINE状态
-- N_ONLINE: 在线状态
-- N_NORMAL_MEMORY: Node包含普通内存域
-- N_HIGH_MEMORY: Node包含高端内存或者普通内存域
-- N_CPU: Node包含一个或者多个cpus
+- `N_POSSIBLE`: 某个时刻后能够变成ONLINE状态
+- `N_ONLINE`: 在线状态
+- `N_NORMAL_MEMORY`: Node包含普通内存域
+- `N_HIGH_MEMORY`: Node包含高端内存或者普通内存域
+- `N_CPU`: Node包含一个或者多个cpus
 
-N_POSSIBLE、N_ONLINE、N_CPU会用于内存、cpu的热插拔。
+`N_POSSIBLE`、`N_ONLINE`、`N_CPU`会用于内存、cpu的热插拔。`N_NORMAL_MEMORY`、`N_HIGH_MEMORY`与内存管理相关。
 
 ### Zone
 
@@ -163,25 +163,28 @@ struct zone {
 
 在zone中使用了两个自旋锁，`lock`和`lru_lock`，这两个锁的使用频率很高，为了降低锁的并发压力，结构体中通过`ZONE_PADDING`填充直接让两个锁进入不同的cache line，降低对cache line的冲突，`____cacheline_internodealigned_in_smp`编译器关键字提示最优化的cache line对齐。
 
-- pages_min, pages_low, pages_high: 内存水线，用于触发不同操作。高于pages_high此时**内存域**状态理想。低于pages_low触发swap。低于pages_min页回收压力较大。
-- lowmem_reserve: 每个内存域的保留内存页，用于完成一些不能失败的分配，每个内存域的保留内存不同。
-- node
-- min_unmapped_pages
-- min_slab_pages
-- pageset: 一个per-cpu数组，struct per_cpu pageset存储了per-cpu的冷热页信息，热页指page内容仍在cache中，可以快速访问，冷页即内容不在cache中。
-- free_area: 数组，每个free_area存放了分配阶大小的page，和伙伴系统相关。
-- active_list, inactive_list: 访问频繁的page看作active。访问不频繁的page为inactive的。在回收时应该优先回收inactive状态的page。active_list和inactive_list对应两种状态page的列表。
-- nr_scan_active, nr_scan_inactive: 指定在回收时需要扫面的活跃和非活跃page数
-- pages_scanned: 指定了上次换出一页以来有多少页未成功扫描。
-- flags: 内存域状态。
-- wait_table: 
-- wait_table_hash_nr_entries
-- wait_table_bits
-- zone_pgdat
-- zone_start_pfn
-- spanned_pages
-- present_pages
-- name
+- `pages_min`, `pages_low`, `pages_high`: `内存水线，用于触发不同操作。高于pages_high`此时**内存域**状态理想。低于`pages_low`触发swap。低于`pages_min`页回收压力较大。
+- `lowmem_reserve`: 每个内存域的保留内存页，用于完成一些不能失败的分配，每个内存域的保留内存不同。
+- `pageset`: 一个per-cpu数组，`struct per_cpu_pageset`存储了per-cpu的冷热页信息，热页指page内容仍在cache中，可以快速访问，冷页即内容不在cache中。
+- `free_area`: 数组，每个`free_area`存放了分配阶大小的page，和伙伴系统相关。
+- `active_list`, `inactive_list`: 访问频繁的page看作active。访问不频繁的page为inactive的。在回收时应该优先回收inactive状态的page。`active_list`和`inactive_list`对应两种状态page的列表。
+- `nr_scan_active`, `nr_scan_inactive`: 指定在回收时需要扫面的活跃和非活跃page数
+- `pages_scanned`: 指定了上次换出一页以来有多少页未成功扫描。
+- `flags`: 内存域状态。`ZONE_ALL_UNRECLAIMABLE`表示所有的pages都被钉住不可回收，出现在页面回收时。`ZONE_RECLAIM_LOCKED`避免SMP系统多个CPU同时回收。`ZONE_OOM_LOCKED`在处理OOM时设置，避免多CPU进行该操作。
+  
+```c
+typedef enum {
+    ZONE_ALL_UNRECLAIMABLE,		/* all pages pinned */
+    ZONE_RECLAIM_LOCKED,		/* prevents concurrent reclaim */
+    ZONE_OOM_LOCKED,		/* zone is in OOM killer zonelist */
+} zone_flags_t;
+```
+
+- `prev_priority`: 存储了上一次扫描该内存区域时的优先级，扫描操作由`try_to_free_pages`进行，该值与页的换出有关。
+- `wait_table`，`wait_table_hash_nr_entries`，`wait_table_bits`: 等待队列，用于进程等待某个页成为可用，但事件发生用于唤醒进程恢复工作。
+- `zone_pgdat`: 指向所属的Node实例。
+- `zone_start_pfn`: 第一个页帧的编号。
+- `spanned_pages`，`present_pages`，`name`: 不重要，`spanned_pages`和`present_pages`含义与Node中相同。
 
 ## reference
 
