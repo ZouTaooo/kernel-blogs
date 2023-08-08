@@ -15,7 +15,7 @@ void *vmalloc(unsigned long size)
 
 在内核地址空间中低地址部分采取的是直接映射的方式，通过虚拟地址减去地址偏移就能得到物理地址，`vmalloc`区域和直接映射区域之间通过8MB的安全间隙隔开，`vmalloc`在每次调用时都会找到一片连续的内核虚拟地址空间满足分配要求，之后分配物理内存并建立页表映射。
 
-![vmalloc](image-7.png)
+![vmalloc](../imgs/image-7.png)
 
 因此，vmalloc分配内存有三步：
 
@@ -51,7 +51,7 @@ struct vm_struct {
 
 `vmalloc`的实现细节我觉得并不是很重要，比如边界的处理、有效地址范围的查找等等。更重要的是`vmalloc`的流程。
 
-![Alt text](image-8.png)
+![Alt text](../imgs/image-8.png)
 
 `vmalloc`最后会进入`__vmalloc_node`。
 
@@ -73,4 +73,4 @@ struct vm_struct {
 - `__free_page`: 释放`pages`中的每一个page，注意释放`vm_struct`的时候并没有释放`pages`指向的空间，该空间是单独分配的。
 - `kfree` or `vfree`: `pages`指针数组由`__vmalloc_node`或者`kmalloc_node`分配，按照flags是否标记`VM_VPAGES`区分。
 
-![Alt text](image-10.png)
+![Alt text](../imgs/image-10.png)

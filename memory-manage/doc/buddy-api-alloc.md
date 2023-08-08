@@ -140,7 +140,7 @@ static inline enum zone_type gfp_zone(gfp_t flags)
 
 所有的对外提供内存分配的API提供的特性都是通过设置相关的flag后使用相同的内存分配函数分配的。
 
-![Alt text](image-3.png)
+![Alt text](../imgs/image-3.png)
 
 这个函数就是`alloc_pages_node`。在该函数中检查了分配阶以及node id是否合法后调用了`__alloc_pages`进行内存分配。
 
@@ -268,7 +268,7 @@ int zone_watermark_ok(struct zone *z, int order, unsigned long mark,
 
 在zone满足水线要求后`buffered_rmqueue`会尝试从zone的自由链表中分配内存块。
 
-![Alt text](image-4.png)
+![Alt text](../imgs/image-4.png)
 
 冷热链表机制在之前已经描述过了，主要是对分配阶为0的内存分配过程进行了优化。
 
@@ -310,7 +310,7 @@ failed:
 
 如果`__rmqueue_smallest`分配失败，此时会尝试按照迁移类型的备选列表尝试从其他的自由链表分配内存块。迁移类型部分可以可以查看其他文章。
 
-![Alt text](image-5.png)
+![Alt text](../imgs/image-5.png)
 
 ```c
 static struct page *__rmqueue(struct zone *zone, unsigned int order,

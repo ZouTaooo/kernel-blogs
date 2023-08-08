@@ -1,6 +1,6 @@
 # 伙伴系统API-内存释放
 
-![Alt text](image-6.png)
+![Alt text](../imgs/image-6.png)
 
 `free_page`和`free_pages`以虚拟地址为参数，`__free_page`和`__free_pages`以page指针为参数，`virt_to_page`实现虚拟地址到page指针的转化。
 

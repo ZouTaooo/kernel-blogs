@@ -40,7 +40,7 @@ void __meminit adjust_zone_range_for_zone_movable(int nid,
 
 ## 访问ZONE_MOVABLE
 
-我们知道访问内存的入口函数需要指定一些GFP_MASK，其中和访问内存区域相关的会将GFP_MASK转化为`ZONE_TYPE`，仅当同时设置`__GFP_HIGHMEM | __GFP_MOVABLE`时才会对该内存区域进行访问。其余部分和分配释放内存无异。
+我们知道访问内存的入口函数需要指定一些GFP_MASK，其中和访问内存区域相关的会将GFP_MASK转化为`ZONE_TYPE`，仅当同时设置`__GFP_HIGHMEM | __GFP_MOVABLE`时才会对该内存区域进行访问。其余部分和正常从伙伴系统分配释放内存无异。
 
 ```c
 static inline enum zone_type gfp_zone(gfp_t flags)

@@ -1,6 +1,6 @@
 # 持久映射和固定映射
 
-![Alt text](image-11.png)
+![Alt text](../imgs/image-11.png)
 
 `VMALLOC_START`和`VMALLOC_END`之间的区域用于`vmalloc`分配逻辑上连续物理上不连续的内存。
 
@@ -12,7 +12,6 @@
 
 ## 相关API
 
-- `vmalloc`: 用于在VMALLOC区域分配逻辑上连续但是物理上不连续的内存。
 - `kmap`: 接收page指针为参数，如果该page是高端内存时才会在持久映射区建立映射，因为持久映射区的范围有限，如果没有空闲地址可以建立映射就会陷入睡眠，因此在一些场景无法使用。
 - `kmap_atomic`: 和kamp类似，接收一个page指针和`km_type`作为参数，但是`kmap_atomic`是原子的不会陷入睡眠。
 
