@@ -17,7 +17,7 @@ NUMA是非一致性内存访问(Uon-Uniform Memory Access)的缩写，与之相�
 
 ## 内存域（Zone）
 
-在讲Zone之前需要先描述一下虚拟地址空间的划分，在32位系统上可寻址的地址空间为4GB，一般会按照3:1的比例划分为用户地址和内核地址。对于不超过内核地址空间范围的物理内存访问可以通过虚拟内存减去内核地址偏移的方式得到物理地址，这种地址映射方式被称为**直接映射**，对于超过内核地址空间范围的物理内存则需要通过**高端内存映射**实现地址转换。
+在讲Zone之前需要先描述一下虚拟地址空间的划分，在32位系统上可寻址的地址空间为4GB，一般会按照3:1的比例划分为用户地址和内核地址。内核地址空间的前896MB空间被称为直接映射区，对于物理内存地址不超过该范围的页帧可以通过虚拟内存减去内核地址偏移的方式得到物理地址，这种地址映射方式被称为**直接映射**，对于超过内核地址空间范围的物理内存则需要通过**高端内存映射**，其映射关系是动态的。
 
 Zone的类型与其物理地址范围有关，从低地址高地址划分为`ZONE_DMA`、`ZONE_DMA32`、`ZONE_NORMAL`、`ZONE_HIGHMEM`。
 
@@ -28,7 +28,7 @@ Zone的类型与其物理地址范围有关，从低地址高地址划分为`ZON
 
 这里的Zone指的是**物理内存的地址范围**，并不一定存在对应的物理内存。
 
-除此之外，内核还提供了一个伪内存区域`ZONE_MOVEABLE`，在减少内存碎片的机制中会涉及。
+除此之外，内核还提供了一个伪内存区域`ZONE_MOVEABLE`，是一种减少内存碎片的机制。
 
 每个Zone提供了一个数组来管理该内存区域内的所有页帧，每个页帧通过`Page`结构体来描述。
 
@@ -163,12 +163,12 @@ struct zone {
 
 在zone中使用了两个自旋锁，`lock`和`lru_lock`，这两个锁的使用频率很高，为了降低锁的并发压力，结构体中通过`ZONE_PADDING`填充直接让两个锁进入不同的cache line，降低对cache line的冲突，`____cacheline_internodealigned_in_smp`编译器关键字提示最优化的cache line对齐。
 
-- `pages_min`, `pages_low`, `pages_high`: `内存水线，用于触发不同操作。高于pages_high`此时**内存域**状态理想。低于`pages_low`触发swap。低于`pages_min`页回收压力较大。
-- `lowmem_reserve`: 每个内存域的保留内存页，用于完成一些不能失败的分配，每个内存域的保留内存不同。
+- `pages_min`, `pages_low`, `pages_high`: 内存水线，用于触发不同操作。高于`pages_high`时**内存域**状态理想。低于`pages_low`触发swap。低于`pages_min`页回收压力较大。
+- `lowmem_reserve`: 每个内存域的保留内存页，用于完成一些不能失败的分配，每个内存域的保留内存数量不同。
 - `pageset`: 一个per-cpu数组，`struct per_cpu_pageset`存储了per-cpu的冷热页信息，热页指page内容仍在cache中，可以快速访问，冷页即内容不在cache中。
 - `free_area`: 数组，每个`free_area`存放了分配阶大小的page，和伙伴系统相关。
 - `active_list`, `inactive_list`: 访问频繁的page看作active。访问不频繁的page为inactive的。在回收时应该优先回收inactive状态的page。`active_list`和`inactive_list`对应两种状态page的列表。
-- `nr_scan_active`, `nr_scan_inactive`: 指定在回收时需要扫面的活跃和非活跃page数
+- `nr_scan_active`, `nr_scan_inactive`: 指定在回收时需要扫描的活跃和非活跃page数
 - `pages_scanned`: 指定了上次换出一页以来有多少页未成功扫描。
 - `flags`: 内存域状态。`ZONE_ALL_UNRECLAIMABLE`表示所有的pages都被钉住不可回收，出现在页面回收时。`ZONE_RECLAIM_LOCKED`避免SMP系统多个CPU同时回收。`ZONE_OOM_LOCKED`在处理OOM时设置，避免多CPU进行该操作。
   
@@ -181,11 +181,7 @@ typedef enum {
 ```
 
 - `prev_priority`: 存储了上一次扫描该内存区域时的优先级，扫描操作由`try_to_free_pages`进行，该值与页的换出有关。
-- `wait_table`，`wait_table_hash_nr_entries`，`wait_table_bits`: 等待队列，用于进程等待某个页成为可用，但事件发生用于唤醒进程恢复工作。
+- `wait_table`，`wait_table_hash_nr_entries`，`wait_table_bits`: 等待队列，用于进程等待某个页成为可用，当事件发生时会唤醒进程恢复工作。
 - `zone_pgdat`: 指向所属的Node实例。
 - `zone_start_pfn`: 第一个页帧的编号。
 - `spanned_pages`，`present_pages`，`name`: 不重要，`spanned_pages`和`present_pages`含义与Node中相同。
-
-## reference
-
-《深入Linux内核架构》

@@ -123,3 +123,57 @@ D[固定映射]
 A -.- B -.- C -.- D
 
 :::
+
+
+--------------------------
+
+```mermaid
+flowchart RL
+
+subgraph cache_chain
+A[kmem_cache] --> B[kmem_cache] --> C[kmem_cache]-->D[...]
+end
+
+subgraph data
+F[per-node kmem_list3] ~~~ E[per-cpu array_cache] 
+end
+
+subgraph array_cache
+ent1[entry]--->ent22[entry]--->ent3[entry]--->ent4[...]
+end
+
+subgraph kmem_list3
+slab1[slabs_full] ~~~ slab2[slabs_partial] ~~~slab3[slabs_free]
+end
+
+subgraph slab
+page1[slab] --> page2[slab] -->page3[slab]
+page3 -.->page2-.->page1
+end
+
+C-->data
+E-->array_cache
+F-->kmem_list3
+slab1-->page1
+page1-.->slab1
+```
+
+----------------------
+
+```mermaid
+graph TB
+
+A[kmalloc]
+B[kmem_cache_alloc]
+%% C[kmem_cache_create]
+%% D[kmem_cache_init]
+
+%% A ~~~ B ~~~ C ~~~ D
+
+A --> __do_kmalloc --> __find_general_cachep --> F[__cache_alloc]
+A --> B
+B ---> F[__cache_alloc] --> __do_cache_alloc --> E[____cache__alloc] --> cpu_cache_get
+
+E[____cache_alloc] --> cache_alloc_refill --> cache_grow --> kmem_getpages --> alloc_pages_node
+
+```
