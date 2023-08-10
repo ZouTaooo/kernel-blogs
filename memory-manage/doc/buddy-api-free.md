@@ -10,8 +10,8 @@
 
 `__free_pages`接受page指针和order两个参数，指定释放的连续page的第一个page指针和分配阶。`put_page_testzero`会检查引用计数是否正常，确保没有其他用户仍然在使用该page以后才会真正释放该内存块，否则只是将引用计数减.
 
-如果释放的是一个page，会将该page作为热页放入冷热链表中。
-释放连续page调用`__free_pages_ok`，进行一些安全检查后调用`free_one_page-->__free_one_page`返回page给伙伴系统。
+如果释放的是单个page，会将该page作为热页放入冷热链表中。
+释放连续page会调用`__free_pages_ok`进行一些安全检查后调用`free_one_page-->__free_one_page`返回pages给伙伴系统。
 
 ```c
 void __free_pages(struct page *page, unsigned int order)
@@ -25,13 +25,13 @@ void __free_pages(struct page *page, unsigned int order)
 }
 ```
 
-`PageCompound & destroy_compound_page`和复合页的释放相关。后续单独写。
+`__free_one_page`中`PageCompound & destroy_compound_page`与复合页的释放相关。后续单独写。
 
-`__free_one_page`并不只释放了一个page，而是释放了多个连续内存页，伙伴系统的page释放会有可能触发多次伙伴的合并。`__page_find_buddy`会按照page idx和order计算出对应的buddy的idx。
+`__free_one_page`并不只释放了一个page，而是释放了多个连续内存页，伙伴系统的page释放会有可能多次触发伙伴的合并。`__page_find_buddy`会按照page idx和order计算出对应的buddy的idx。
 
-`page_is_buddy`会检查buddy是否有效，包括是否位于空洞、是否处于伙伴系统中、分配阶是否相同、是否处于同一个zone。
+`page_is_buddy`会检查buddy是否有效，包括是否位于空洞、是否处于伙伴系统中、分配阶是否相同、是否处于同一个zone等等。
 
-如果则将两个内存块合并为高一阶的内存块，并进入下一次的循环。
+如果是有效伙伴则将两个内存块合并为高一阶的内存块，并进入下一次的循环。
 
 关于查找伙伴的idx，计算合并后的page的idx等计算的细节这里就不展开了。
 

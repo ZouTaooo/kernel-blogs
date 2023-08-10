@@ -1,6 +1,6 @@
 # Page
 
-页帧page是物理内存管理的基本单位，`struct page`记录了任意时刻page的所有状态，因此每一个物理页帧都需一个对应的`struct page`结构体记录状态，对于大内存容量需要的`struct page`本身就需要大量内存进行存储，因此该结构体中每增加一个变量带来的代价会很大，需要仔细控制该结构体的size。因此内核广泛使用了union，同一时刻不会同时使用的变量作为一个union。
+页帧page是物理内存管理的基本单位，`struct page`记录了任意时刻page的所有状态，因此每一个物理页帧都需一个对应的`struct page`结构体记录状态，对于内存多计算机系统需要的`struct page`本身就需要大量内存进行存储，因此该结构体中每增加一个变量带来的代价会很大，需要仔细控制该结构体的size。内核广泛使用了union，同一时刻不会同时使用的变量作为一个union减少内存开销。
 
 ## struct page
 
@@ -10,9 +10,9 @@
 - `_count`: 使用计数，关系到内存释放。
 - `_mapcount` & `inuse`: `_mapcount`是页表项的映射个数，当page用于slab分配器管理时使用`inuse`表示包含的对象个数。
 - `priave`: page用作pagecahe时`private`存放`struct buffer_head`;page内容被换出时，private存放`swap_entry_t`;page位于伙伴系统时，存放`order`
-- `mapping`: 如果low bit没有set，指向inode的`address_space`，如果有low bit，指向`aono_vma`对象，此时clear低位bit后就可以访问到有效指针。low bit指的是指针都是字节对齐的，低位bit正常情况为0，可以在低位bit中添加信息。
+- `mapping`: 如果low bit没有set，指向inode的`address_space`，如果有low bit，指向`aono_vma`对象，此时clear低位bit后就可以访问到有效指针。指针都是字节对齐的，低位bit正常情况为0，可以在低位bit中添加信息。
 - `slab`: 指向所属的slab分配器`kmem_cache`结构体。
-- `first_page`: 用于复合页中tail page指向first page。
+- `first_page`: 用于复合页中tail page指向head page。
 - `virtual`: 高端内存页的虚拟地址。
 
 ```c
@@ -77,7 +77,7 @@ struct page {
 };
 ```
 
-swap机制、地址映射、复合页、slab分配器等机制都会操作page结构体。
+swap、地址映射、复合页、slab分配器等机制都会操作page结构体。
 
 ## PG_FLAG
 

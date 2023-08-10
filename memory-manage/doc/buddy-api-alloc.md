@@ -4,7 +4,9 @@
 
 GFP是get free page的缩写，GFP_MASK是一系列内存分配的掩码，指导伙伴系统寻找合适的内存块进行分配，同时在分配过程中按照掩码的指示进行内存相关的操作，比如内存回收、分配失败后的行为等。
 
-以下四个GFP_MASK指示了优先从哪个zone上进行内存分配。有个点可能会被注意到`zone_type`中包含的`ZONE_NORMAL`和`ZONE_MOVABLE`两种区域在标志中未出现。这个不必担心，内核提供了`gfp_zone`函数负责转换GFP_MASK为`zone_type`。
+以下四个GFP_MASK指示了优先从哪个zone上进行内存分配。内核提供了`gfp_zone`函数负责转换GFP_MASK为`zone_type`。
+
+`ZONE_NORMAL`和`ZONE_MOVABLE`并没有显式的GFP_MASK对应。
 
 当同时指定`__GFP_HIGHMEM`和`__GFP_MOVABLE`时会返回`ZONE_MOVABLE`，表示从虚拟区域`ZONE_MOVABLE`中分配内存，该区域和内存碎片以及虚拟化中内存的热插拔相关。
 
@@ -62,9 +64,9 @@ static inline enum zone_type gfp_zone(gfp_t flags)
 #define __GFP_MOVABLE ((__force gfp_t)0x100000u)  /* Page is movable */
 ```
 
-- `__GFP_WAIT`: 允许中断
+- `__GFP_WAIT`: 允许中断和重新调度
 - `__GFP_HIGH`: 分配内存很紧急
-- `__GFP_IO`: 分配过程允许IO，内存回收时只有设置该标志才能将内存刷到磁盘
+- `__GFP_IO`: 分配过程允许IO，内存回收时只有设置该标志才能将内存数据刷到磁盘
 - `__GFP_FS`: 允许vfs操作，在vfs相关子系统中需禁用，否则可能引起vfs递归调用。
 - `__GFP_COLD`: 分配冷页
 - `__GFP_NOWARN`: 分配失败时不告警
@@ -72,13 +74,13 @@ static inline enum zone_type gfp_zone(gfp_t flags)
 - `__GFP_NOFAIL`: 分配失败后不断尝试直到成功
 - `__GFP_NORETRY`: 分配失败后不重试
 - `__GFP_COMP`: 分配复合页
-- `__GFP_ZERO`: 分配成功后将page清零
+- `__GFP_ZERO`: 分配成功后将内存清零
 - `__GFP_NOMEMALLOC`: 不使用紧急保留链表（MIGRATE_RESERVER）
 - `__GFP_HARDWALL`: 只在当前进程允许运行的cpu所在node上进行内存分配
 - `__GFP_THISNODE`: 只允许在当前node上分配，不使用node的备选列表
 - `__GFP_RECLAIMABLE` & `__GFP_MOVABLE`: 分配的页是可回收或者可移动的，需要在对应的空闲链表中分配。
 
-在进行内存分配时会用到以上以下划线开头的多个flag的组合，常用的GFP_MASK如下:
+在进行内存分配时会用到以上以下划线开头的多个flag的组合，常用的GFP_MASK组合如下:
 
 ```c
 
@@ -185,7 +187,7 @@ int zone_watermark_ok(struct zone *z, int order, unsigned long mark,
 
 在`get_page_from_freelist`调用`zone_watermark_ok`前会按照`alloc_flags`获得希望满足的水位线，并作为参数`mark`传入。
 
-其中分配flag的含义如下:
+相关的`alloc_flag`的含义如下:
 
 - `ALLOC_NO_WATERMARKS`: 表示不检查水位线
 - `ALLOC_WMARK_MIN`: 使用`zone->pages_min`作为水位线
@@ -224,7 +226,7 @@ get_page_from_freelist(gfp_t gfp_mask, unsigned int order,
 
 在通过`ALLOC_NO_WATERMARKS`、`ALLOC_WMARK_MIN`、`ALLOC_WMARK_LOW`和`ALLOC_WMARK_HIGH`几个flag确定了需要满足的内存域水位线后，`zone_watermark_ok`会根据`ALLOC_HIGH`和`ALLOC_HARDER`对水位线进一步下调，当只设置`ALLOC_HIGH`时下调1/2，当只设置`ALLOC_HARDER`时下调1/4，同时设置时会下调5/8。
 
-真正需要满足的水位线存储在局部变量`min`中。进行两个检查，首先检查内存区域去除保留内存后伙伴系统内剩余的内存页是否达到水位线，还会遍历所有小于`order`的分配阶检查是否满足水位要求。应该是避免整体水位达标，但是低分配阶内存数量过多的情况，此时当前分配阶以上的内存，能够满足分配要求的内存总量不太充足，会不满足分配条件。
+真正需要满足的水位线存储在局部变量`min`中。进行两个检查，首先检查内存区域去除保留内存后伙伴系统内剩余的内存总量是否达到水位线。其次还会遍历所有小于`order`的分配阶检查是否满足水位要求。应该是避免整体水位达标，但是低分配阶内存数量过多的情况，此时当前分配阶以上的内存，能够满足分配要求的内存总量不太充足，会不满足分配条件。
 
 ```c
 /*
@@ -270,7 +272,7 @@ int zone_watermark_ok(struct zone *z, int order, unsigned long mark,
 
 ![Alt text](../imgs/image-4.png)
 
-冷热链表机制在之前已经描述过了，主要是对分配阶为0的内存分配过程进行了优化。
+冷热页机制在其他章节已经描述过了，主要是对分配阶为0的内存分配过程进行了优化。
 
 - `__rmqueue`尝试分配固定分配阶的内存块，并返回第一个page的指针。
 - `prep_new_page`对分配的pages进行初始化。
@@ -306,7 +308,7 @@ failed:
 }
 ```
 
-`__rmqueue`完成从伙伴系统的自由链表分配阶`order`的内存块，`__rmqueue_smallest`尝试按照满足`order`和迁移类型的自由链表中进行内存块的分配，如果对应分配阶的自由链表为空就会从更大分配阶的自由链表上分配内存块并进行分裂，`expand`负责将分裂后的内存块填入到对应的自由链表中。
+`__rmqueue`完成从伙伴系统的自由链表中获取分配阶为`order`的内存块，`__rmqueue_smallest`尝试从满足`order`和迁移类型的自由链表中进行内存块的分配，如果对应分配阶的自由链表为空就会从更大分配阶的自由链表上分配内存块并进行分裂，`expand`负责将分裂后的内存块填入到对应的自由链表中。
 
 如果`__rmqueue_smallest`分配失败，此时会尝试按照迁移类型的备选列表尝试从其他的自由链表分配内存块。迁移类型部分可以可以查看其他文章。
 
@@ -366,7 +368,7 @@ static struct page *__rmqueue_smallest(struct zone *zone, unsigned int order,
 
 此外，为了避免分配的大块内存出现的小自由内存块散布在多个迁移类型列表出现难以合并的情况，分配的内存块如果属于比较大内存块（**大内存块的标准由宏`pageblock_order`定义，在这里比较大的内存块指分配阶超过了pageblock_order的1/2**），或者原本期望分配的内存为可回收类型，此时会尝试将包含即将分配的内存块在内的整个大内存块迁移到期望分配的迁移类型对应的自由链表上。
 
-连续大内存块确实迁移到了新的自由链表上，但是内存块的迁移类型是否需要改变还需要看`move_freepages_block`实际迁移的page数量是否超过了一个大内存块包含页的一半（这是一个固定值），结果会受到这个连续大内存块中属于伙伴系统的page数和内存域的影响，有可能这个连续大内存块已经有大分布被分配出去了，并不属于伙伴系统，或者大内存块包含的大部分内存块属于其他内存域。
+连续大内存块确实迁移到了新的自由链表上，但是内存块的迁移类型是否需要改变还需要看`move_freepages_block`实际迁移的page数量是否超过了一个大内存块包含页的一半（这是一个固定值）。结果会受到这个连续大内存块中属于伙伴系统的page数和内存域的影响，有可能出现这个连续大内存块已经有大分布被分配出去了，并不属于伙伴系统，或者大内存块包含的大部分内存块属于其他内存域等情况。
 
 迁移结束后将page从自由链表中摘下（可能已经在新自由链表上了），并调用`expand`归还剩下的内存块给伙伴系统。
 
@@ -438,7 +440,7 @@ static struct page *__rmqueue_fallback(struct zone *zone, int order,
 
 ### prep_new_page
 
-不管是从冷热链表分配单页内存还是从`__rmqueue`多页内存，如果**分配成功**都会调用`prep_new_page`对分配的连续内存块进行初始化。
+不管是从冷热链表分配单页内存还是从`__rmqueue`分配多页内存，如果**分配成功**都会调用`prep_new_page`对分配的连续内存块进行初始化。
 
 该函数会对第一个page的指针状态做一些检查，比如分配的page存在映射、引用计数不为0、一些flag不正确等。
 
@@ -504,22 +506,21 @@ static int prep_new_page(struct page *page, int order, gfp_t gfp_flags)
 
 在看完了所有的辅助函数以后，阅读`__alloc_pages`的实现则会轻松很多。
 
-首先进行了第一次`get_page_from_freelist`，可以看到分配要求有`__GFP_HARDWALL`和`ALLOC_WMARK_LOW|ALLOC_CPUSET`，这说明第一次尝试分配时不允许跨node分配，并且要求内存水位线不低于`pages_low`，以及仅在当前task可以运行的cpu关联的node上分配内存三个条件限制。
+首先进行了第一次`get_page_from_freelist`，可以看到分配要求有`__GFP_HARDWALL`和`ALLOC_WMARK_LOW|ALLOC_CPUSET`，这说明第一次尝试分配时不允许跨node分配，并且要求内存水位线不低于`pages_low`，以及仅在当前task可以运行的cpu关联的node上分配内存，存在三个条件限制。
 
 正常情况下第一次尝试分配内存就会成功并返回，如果分配失败则检查一下当前是否是NUMA架构并且设置了`GFP_THISNODE`，`GFP_THISNODE`是`__GFP_THISNODE,__GFP_NORETRY，__GFP_NOWARN`的组合，表示仅在当前node上分配并且失败后不重试不告警，此时会返回分配失败。
 
 之后唤醒kswapd进行内存的回收，开始第二次尝试，这次尝试会针对实时任务、设置了`__GFP_HIGH`或者不接受等待和再次调度的请求添加`ALLOC_HARDER`和`ALLOC_HIGH`尝试更努力的分配。
 
-如果再次失败则检查task是否真的非常需要内存，如果task标记了`PF_MEMALLOC`是内存的管理者或者Thread Information Flags标记了`TIF_MEMDIE`即将被OOM kill掉，并且没有要求不从保留内存中分配，此时会放弃内存水位线检查全力分配内存。并且如果标记了`__GFP_NOFAIL`，此时会在分配失败后睡眠等待块设备写完成（等待内存回收）后再次尝试直到成功。
+如果再次失败则检查task是否真的非常需要内存，如果task标记了`PF_MEMALLOC`表明是内存的管理者或者Thread Information Flags标记了`TIF_MEMDIE`表示即将被OOM kill掉，并且没有要求不从保留内存中分配，此时会放弃内存水位线检查全力分配内存。如果依然分配失败并且标记了`__GFP_NOFAIL`，此时会在分配失败后睡眠等待块设备写完成（等待内存回收）后再次尝试直到成功。
 
-对于普通task来说，此时就判断是否允许重新调度和等待后再次尝试，如果不允许就返回分配失败。如果允许重新调度，此时调用`cond_schedule`让出cpu执行机会。
+除了以上的特殊task，对于普通task来说，此时就判断是否允许重新调度和等待后再次尝试，如果不允许就返回分配失败。如果允许重新调度，此时调用`cond_schedule`让出cpu执行机会。
 
-继续执行后，此时将当前task标记`PF_MEMALLOC`表示为内存管理者，尝试进行直接内存回收，调用`try_to_free_pages`尝试换出内存。如果分配的不是单页，还会调用`drain_all_pages`回收per-cpu缓存。
+在重新获得cpu的执行权后，此时将当前task标记`PF_MEMALLOC`表示为内存管理者，尝试进行直接内存回收，调用`try_to_free_pages`尝试换出内存。如果分配的不是单页，还会调用`drain_all_pages`回收per-cpu缓存。
 
-如果`try_to_free_pages`有一定的效果，则再次尝试分配。如果无效，并且允许重试和调用vfs接口，oom killer开始工作。首先会调用`try_set_zone_oom`尝试获取oom killer锁，如果获取失败说明已经有oom killer在工作，此时睡眠1s后回到`restart`。如果获取锁成功，首先会再次尝试分配内存，如果分配失败判断一下order是否超过`PAGE_ALLOC_COSTLY_ORDER`（内核定义为3），oom killer对大块内存分配没有太大帮助，此时会分配失败。如果分配的是小块内存，此时会调用`out_of_memory`挑选一个占用内存较多的进程并杀死后回到`restart`。
+如果`try_to_free_pages`有一定的效果，则再次尝试分配。如果无效，并且允许重试和调用vfs接口，此时oom killer开始工作。首先会调用`try_set_zone_oom`尝试获取oom killer锁，如果获取失败说明已经有oom killer在工作，此时睡眠1s后回到`restart`。如果获取锁成功，首先会再次尝试分配内存，如果分配失败判断一下order是否超过`PAGE_ALLOC_COSTLY_ORDER`（内核定义为3），oom killer对大块内存分配没有太大帮助，此时会分配失败。如果分配的是小块内存，此时会调用`out_of_memory`挑选一个占用内存较多的进程并杀死后回到`restart`。
 
-如果`try_to_free_pages`没有效果，又不允许调用vfs配合oom killer释放内存，检查是否允许重试。此时只有分配阶小于等于`PAGE_ALLOC_COSTLY_ORDER`同时设置了`__GFP_REPEAT`的情况，以及设置了`__GFP_NOFAIL`的情况下会回到
-`rebalance`进行直接内存回收。其他情况就宣布分配失败。
+如果`try_to_free_pages`没有效果，又不允许调用vfs配合oom killer释放内存，检查是否允许重试。此时只有分配阶小于等于`PAGE_ALLOC_COSTLY_ORDER`同时设置了`__GFP_REPEAT`的情况，以及设置了`__GFP_NOFAIL`的情况下会回到`rebalance`进行直接内存回收。其他情况就宣布分配失败。
 
 ```c
 /*

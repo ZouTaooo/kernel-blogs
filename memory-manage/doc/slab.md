@@ -27,7 +27,6 @@ slab提供两种服务，第一种以`kmalloc&kfree`为入口，分配指定size
 通过`cat /proc/slvbinfo`查看slab信息。
 
 ```c
-[sudo] password for weizhen.zt: 
 slabinfo - version: 2.1
 # name            <active_objs> <num_objs> <objsize> <objperslab> <pagesperslab> : tunables <limit> <batchcount> <sharedfactor> : slabdata <active_slabs> <num_slabs> <sharedavail>
 kcopyd_job             0      0   3312    9    8 : tunables    0    0    0 : slabdata      0      0      0

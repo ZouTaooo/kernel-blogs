@@ -59,18 +59,18 @@ struct vm_struct {
 
 第二步，调用`__vmalloc_area_node`做了三件事。
 
-第一件分配`pages`指针需要的空间，`pages`是`vm_struct`中记录所有`page*`的数组。`pages`空间的分配和`nr_pages`有关，如果需要分配的页帧很多，对应的指针数组大小不小于PAGE_SIZE，此时就会调用`__vmalloc_node`，这个函数刚好又是调用`__vmalloc_area_node`的函数，但是不需要担心会引起循环调用，毕竟分配的空间会越来越小，此外为了后续可以正常释放该块内存需要再加一个标记`VM_VPAGES`，表示`pages`空间由`__vmalloc_node`分配。如果小于PAGE_SIZE则通过`kmalloc`分配空间。
+第一件，分配`pages`指针需要的空间，`pages`是`vm_struct`中记录所有`page*`的数组。`pages`空间的分配和`nr_pages`有关，如果需要分配的页帧很多，对应的指针数组需要的空间不小于PAGE_SIZE，此时就会调用`__vmalloc_node`，这个函数刚好又是调用`__vmalloc_area_node`的函数，但是不需要担心会引起循环调用，毕竟分配的空间会越来越小，此外为了后续可以正常释放该块内存需要再加一个标记`VM_VPAGES`，表示`pages`空间由`__vmalloc_node`分配。如果小于PAGE_SIZE则通过`kmalloc`分配空间。
 
-第二件，对`pages`中的每一个指针依次分配一个page并让指针指向该page。分配page的操作由`alloc_pages_node`完成，这部分内容其他文章已经提过，最后会通过per-cpu的冷热链表完成分配。
+第二件，对`pages`中的每一个指针依次从伙伴系统申请分配一个page并让指针指向该page。分配page的操作由`alloc_pages_node`完成，这部分内容其他文章已经提过，最后会通过per-cpu的冷热链表完成分配。
 
-第三件，建立起虚拟地址空间和物理地址page的映射，由`map_vm_area`完成。涉及到页目录、页表项的分配和赋值。
+第三件，在页表中建立起虚拟地址空间和物理页帧的映射，由`map_vm_area`完成。涉及到页目录、页表项的分配和赋值。
 
 ## vfree
 
-`vfree`从逻辑上说只是`vmalloc`的逆操作，实现上调用了`__vunmap`，该函数有一个`deallocate_pages`表示是否释放内存，否则就只取消映射关系。对于`vfree`来说自然是要释放内存。
+`vfree`从逻辑上说只是`vmalloc`的逆操作，实现上调用了`__vunmap`，该函数有一个`deallocate_pages`参数表示是否释放内存，否则就只取消映射关系。对于`vfree`来说自然是要释放内存。
 
-- `remove_vm_area`: 首先查找到地址对应的`vm_struct`从链表中删除并调用`kfree`释放该对象，然后取消地址映射。
-- `__free_page`: 释放`pages`中的每一个page，注意释放`vm_struct`的时候并没有释放`pages`指向的空间，该空间是单独分配的。
-- `kfree` or `vfree`: `pages`指针数组由`__vmalloc_node`或者`kmalloc_node`分配，按照flags是否标记`VM_VPAGES`区分。
+- `remove_vm_area`: 首先查找到地址对应的`vm_struct`从链表中删除并调用`kfree`释放该对象，然后取消页表的地址映射。
+- `__free_page`: 释放`pages`中的每一个page。
+- `kfree` or `vfree`: 注意释放`vm_struct`的时候并没有释放`pages`指向的空间，该空间是单独分配的。`pages`指针数组由`__vmalloc_node`或者`kmalloc_node`分配，按照flags是否标记`VM_VPAGES`区分。
 
 ![Alt text](../imgs/image-10.png)
