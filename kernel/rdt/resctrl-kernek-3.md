@@ -7,7 +7,7 @@
 
 ## rdt group的创建
 
-在Resctrl中有两类建组操作，一类是在根目录下创建CTRL-MON group，另一类则是在CTRL-MON group下的mon_groups目录下创建MON0-group。
+在Resctrl中有两类建组操作，一类是在根目录下创建CTRL-MON group，另一类则是在CTRL-MON group下的mon_groups目录下创建MON-group。
 在内核中Resctrl文件系统中的创建目录的处理函数是`rdtgroup_mkdir`。主要逻辑如下：
 
 1. 如果cpu支持资源分配，比如cat、mba等功能，并且是在resctrl根目录下创建目录则会调用`rdtgroup_mkdir_ctrl_mon`创建一个CTRL-MON group。
@@ -40,8 +40,7 @@ static int rdtgroup_mkdir(struct kernfs_node *parent_kn, const char *name,
 }
 ```
 
-相比于建组操作，对RDT有一定了解的肯定更关心建组操作是如何分配CLOSID和RMID。肯定会有人认为创建CTRL-MON group会分配一个CLOSID和RMID，创建一个MON group只会分配RMID。笔者开始的想法也是这样，但是这是不准确的。实际上
-在`rdtgroup_mkdir_ctrl_mon`和`rdtgroup_mkdir_mon`中都会分配一个CLOSID和一个RMID。因此在resctrl视角下，每一个根目录下创建的目录和mon_groups目录下创建的目录都是一个控制组+监控组，但是mon_grousps下的MON group并不能实现资源分配（因为没有创建schemata文件）。
+相比于建组操作，对RDT有一定了解的肯定更关心建组操作是如何分配CLOSID和RMID。首先说结论：创建CTRL-MON group会分配一个CLOSID和RMID，创建一个MON group只会分配RMID，MON group会复用其parent CTRL-MON group的closid。
 
 `rdtgroup_mkdir_ctrl_mon`和`rdtgroup_mkdir_mon`的函数调用链如下。
 
@@ -54,5 +53,4 @@ rdtgroup_mkdir
     -->rdtgroup_mkdir_mon
         -->mkdir_rdt_prepare
             -->alloc_rmid
-        -->closid_alloc
 ```
