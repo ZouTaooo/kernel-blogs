@@ -1,5 +1,3 @@
-#! https://zhuanlan.zhihu.com/p/647036878
-
 # Intel-RDT 技术浅析
 
 本文适合于想要了解RDT技术的人阅读，会涉及到RDT技术的硬件机制，需要对CPU的socket、core、thread等概念有一定的了解。
