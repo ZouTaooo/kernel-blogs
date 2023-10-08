@@ -1,5 +1,6 @@
-#! https://zhuanlan.zhihu.com/p/647043798
-# Resctrl内核实现（六）监控事件的记录
+<!-- #! https://zhuanlan.zhihu.com/p/647043798 -->
+<!-- # Resctrl内核实现（六）监控事件的记录 -->
+## 前言
 
 RDT出了提供资源的分配能力外，还提供了对llc和内存带宽等资源的监控能力，用于系统的争抢检测进行性能优化，在resctrl文件系统中监控的数据放在mon_data目录下。
 

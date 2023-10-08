@@ -1,5 +1,6 @@
-#! https://zhuanlan.zhihu.com/p/647038545
-# Resctrl使用说明书
+<!-- #! https://zhuanlan.zhihu.com/p/647038545 -->
+<!-- # Resctrl使用说明书 -->
+## 前言
 
 Resctrl文件系统是Linux内核在4.10提供的对RDT技术的支持，作为一个伪文件系统在使用方式上与cgroup是类似，通过提供一系列的文件为用户态提供查询和修改接口。本文就resctrl文件系统的使用进行了详细说明，内容基本来自于Linux Documentation中的精华部分。
 

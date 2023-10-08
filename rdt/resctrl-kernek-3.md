@@ -1,5 +1,6 @@
-#! https://zhuanlan.zhihu.com/p/647040743
-# Resctrl内核实现（三）GROUP的创建
+<!-- #! https://zhuanlan.zhihu.com/p/647040743 -->
+<!-- # Resctrl内核实现（三）GROUP的创建 -->
+## 前言
 
 在（一）我们已经清楚了Resctrl中RMID和CLOSID的切换规则是怎样的。
 在（二）中对内核中的CLOSID和RMID的分配、释放过程进行了详细解读。

@@ -1,5 +1,8 @@
-#! https://zhuanlan.zhihu.com/p/647040311
-# Resctrl内核实现（二）CLOSID和RMID管理
+<!-- #! https://zhuanlan.zhihu.com/p/647040311 -->
+<!-- # Resctrl内核实现（二）CLOSID和RMID管理 -->
+## 前言
+
+RDT的监控数据累计和资源分配策略的关键就是CLOSID和RMID的分配策略。
 
 ## CLOSID和RMID管理
 

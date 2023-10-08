@@ -1,5 +1,6 @@
-#! https://zhuanlan.zhihu.com/p/647041234
-# Resctrl内核实现（四）schemata和cpus
+<!-- #! https://zhuanlan.zhihu.com/p/647041234 -->
+<!-- # Resctrl内核实现（四）schemata和cpus -->
+## 前言
 
 在Resctrl中可编程的文件主要有两个，schemata指定资源分配策略，cpus则为cpu绑定`default_closid`和`default_rmid`。
 

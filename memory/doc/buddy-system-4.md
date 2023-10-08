@@ -1,14 +1,35 @@
-# 伙伴系统API-内存释放
+<!-- # 伙伴系统（四）内存释放流程 -->
+## 前言
 
-![Alt text](../imgs/image-6.png)
+伙伴系统的内存释放API分析，基于Linux 2.6.25。
 
-`free_page`和`free_pages`以虚拟地址为参数，`__free_page`和`__free_pages`以page指针为参数，`virt_to_page`实现虚拟地址到page指针的转化。
+<!-- ![Alt text](../imgs/image-6.png) -->
 
-最终伙伴系统的入口函数为`__free_pages`。
+对外封装的内存释放API分为两类，`free_page`和`free_pages`以虚拟地址为参数，`__free_page`和`__free_pages`以page指针为参数，可以使用`virt_to_page`实现虚拟地址到page指针的转化，最终都会调用伙伴系统的统一入口函数`__free_pages`。
+
+```mermaid
+graph TB
+
+A[__free_one_page]
+B[__free_pages_ok]
+C[free_hot_page]
+D[__free_pages]
+E[free_one_page]
+
+free_page --> free_pages
+free_pages --> D
+__free_page --> D
+
+D -->|order==0| C
+D -->|order>0| B
+B --> E
+E --> A
+```
+<center>伙伴系统内存释放API调用链</center>
 
 ## __free_pages
 
-`__free_pages`接受page指针和order两个参数，指定释放的连续page的第一个page指针和分配阶。`put_page_testzero`会检查引用计数是否正常，确保没有其他用户仍然在使用该page以后才会真正释放该内存块，否则只是将引用计数减.
+`__free_pages`接受`page`指针和`order`两个参数，指定释放的连续page的第一个page指针和分配阶。`put_page_testzero`会检查引用计数是否正常，确保没有其他用户仍然在使用该page以后才会真正释放该内存块，否则只是将引用计数减1.
 
 如果释放的是单个page，会将该page作为热页放入冷热链表中。
 释放连续page会调用`__free_pages_ok`进行一些安全检查后调用`free_one_page-->__free_one_page`返回pages给伙伴系统。
@@ -25,13 +46,8 @@ void __free_pages(struct page *page, unsigned int order)
 }
 ```
 
-`__free_one_page`中`PageCompound & destroy_compound_page`与复合页的释放相关。后续单独写。
-
-`__free_one_page`并不只释放了一个page，而是释放了多个连续内存页，伙伴系统的page释放会有可能多次触发伙伴的合并。`__page_find_buddy`会按照page idx和order计算出对应的buddy的idx。
-
-`page_is_buddy`会检查buddy是否有效，包括是否位于空洞、是否处于伙伴系统中、分配阶是否相同、是否处于同一个zone等等。
-
-如果是有效伙伴则将两个内存块合并为高一阶的内存块，并进入下一次的循环。
+`__free_one_page`中`PageCompound & destroy_compound_page`与复合页的释放相关，此处不展开。`__free_one_page`并不只释放了一个page，而是释放了多个连续内存页，因此有可能多次触发伙伴之间的的合并。
+在合并中，`__page_find_buddy`会按照page idx和order计算出对应的buddy的idx。`page_is_buddy`会检查buddy是否有效，包括是否位于空洞、是否处于伙伴系统中、分配阶是否相同、是否处于同一个zone等等。如果是有效伙伴则将两个内存块合并为高一阶的内存块，并进入下一次的循环。
 
 关于查找伙伴的idx，计算合并后的page的idx等计算的细节这里就不展开了。
 

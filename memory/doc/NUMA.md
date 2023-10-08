@@ -1,25 +1,26 @@
-# NUMA
+<!-- # 内存管理的框架与数据结构设计 -->
+## 前言
 
-NUMA是非一致性内存访问(Uon-Uniform Memory Access)的缩写，与之相反的是一致性内存访问UMA。在多核的UMA架构的机器上，CPU视角下所有的内存都是均匀的，对内存的访问延迟是相同；而在NUMA架构的机器上内存被划分为不同的区域，对CPU来说内存是不均匀的，存在着远端内存和本地内存的区别，访问远端内存的代价更高。
+在谈Linux内存管理框架之前需要了解NUMA，NUMA是非一致性内存访问(Uon-Uniform Memory Access)的缩写，与之相反的是一致性内存访问UMA。在多核的UMA架构的机器上，CPU视角下所有的内存都是均匀的，不同CPU访问同一块内存的延迟是相同；而在NUMA架构的机器上内存被划分为不同的区域，对CPU来说内存是不均匀的，存在着远端内存和本地内存的区别，访问远端内存的代价更高。
 
-![UMA和NUMA](../imgs/image-1.png)
+![UMA和NUMA](https://img2023.cnblogs.com/blog/3174293/202310/3174293-20231008112821975-1160341054.png)
+
+<center>UMA与NUMA的区别</center>
 
 ## 内核对NUMA的支持
 
 为了支持NUMA内核使用Node这个概念表示一块均匀的内存，这样NUMA系统的多个内存区域就可以用多个Node来表示，这样做有两个优点：
 
-1. 对于UMA架构可以只用一个Node表示就可以了，架构上完全兼容
-2. 对于物理内存区域存在空洞的情况（一种不均匀内存的特殊情况），也可以使用Node概念进行抽象
+1. 对于UMA架构可以只用一个Node表示就可以了，架构上完全兼容。
+2. 对于物理内存区域存在空洞的情况（一种不均匀内存的特殊情况，内存在物理上不连续），也可以使用Node的概念进行抽象。
 
-在内核中使用`pg_data_t`结构描述一个Node，在内核中使用链表串联所有的Node用于遍历访问。
-
-每个Node中的内存又被划分为多个Zone，被称为内存域。
+在内核中使用`pg_data_t`结构描述一个Node，在内核中使用链表串联所有的Node用于遍历访问。每个Node中的内存又被划分为多个Zone，被称为内存域。
 
 ## 内存域（Zone）
 
 在讲Zone之前需要先描述一下虚拟地址空间的划分，在32位系统上可寻址的地址空间为4GB，一般会按照3:1的比例划分为用户地址和内核地址。内核地址空间的前896MB空间被称为直接映射区，对于物理内存地址不超过该范围的页帧可以通过虚拟内存减去内核地址偏移的方式得到物理地址，这种地址映射方式被称为**直接映射**，对于超过内核地址空间范围的物理内存则需要通过**高端内存映射**，其映射关系是动态的。
 
-Zone的类型与其物理地址范围有关，从低地址高地址划分为`ZONE_DMA`、`ZONE_DMA32`、`ZONE_NORMAL`、`ZONE_HIGHMEM`。
+Zone的类型与其物理地址范围有关，从低地址到高地址划分为`ZONE_DMA`、`ZONE_DMA32`、`ZONE_NORMAL`、`ZONE_HIGHMEM`。
 
 - `ZONE_DMA`: DMA寻址需要，一些外设设备能够访问的地址空间有限，因此需要预留一部分物理内存地址空间给DMA使用。
 - `ZONE_DMA32`: 在64位系统上与ZONE_DMA有区别，在32位系统该内存区域为0MB。
@@ -36,7 +37,7 @@ Zone的类型与其物理地址范围有关，从低地址高地址划分为`ZON
 
 ## Node和Zone的数据结构
 
-### Node
+### Node的数据结构
 
 ```c
 typedef struct pglist_data {
@@ -73,8 +74,13 @@ typedef struct pglist_data {
 - `kswapd`: 负责该Node的kswapd进程的`task_struct`
 - `kswapd_max_order`: 页交换子系统实现相关。
 
-在内核所有Node的状态通过位图来表示，每一个状态对应一个位图，位图中的每一个bit对应Node。
+在内核中，Node的状态通过位图来表示，`nodemask_t`是一个Node的位图，每一位对应一个Node，`node_states`是一个`nodemask_t`数组，每一个子项就是处于某状态的Node集合。
 
+```c
+typedef struct { DECLARE_BITMAP(bits, MAX_NUMNODES); } nodemask_t;
+nodemask_t node_states[NR_NODE_STATES];
+```
+在内核中支持的Node状态有以下几种(注意区分`node_states`，在这里是枚举类型，在上面是变量名)：
 ```c
 enum node_states {
     N_POSSIBLE,		/* The node could become online at some point */
@@ -88,9 +94,7 @@ enum node_states {
     N_CPU,		/* The node has one or more cpus */
     NR_NODE_STATES
 };
-
 ```
-
 - `N_POSSIBLE`: 某个时刻后能够变成ONLINE状态
 - `N_ONLINE`: 在线状态
 - `N_NORMAL_MEMORY`: Node包含普通内存域
@@ -99,7 +103,7 @@ enum node_states {
 
 `N_POSSIBLE`、`N_ONLINE`、`N_CPU`会用于内存、cpu的热插拔。`N_NORMAL_MEMORY`、`N_HIGH_MEMORY`与内存管理相关。
 
-### Zone
+### Zone的数据结构
 
 ```c
 struct zone {
@@ -161,12 +165,12 @@ struct zone {
 } ____cacheline_internodealigned_in_smp;
 ```
 
-在zone中使用了两个自旋锁，`lock`和`lru_lock`，这两个锁的使用频率很高，为了降低锁的并发压力，结构体中通过`ZONE_PADDING`填充直接让两个锁进入不同的cache line，降低对cache line的冲突，`____cacheline_internodealigned_in_smp`编译器关键字提示最优化的cache line对齐。
+在zone中使用了两个自旋锁，`lock`和`lru_lock`，这两个锁的使用频率很高，为了降低锁的并发压力，结构体中通过`ZONE_PADDING`填充直接让两个锁进入不同的cache line，降低对cache line的冲突，`____cacheline_internodealigned_in_smp`是一个编译器关键字，提示编译器进行最优化的cache line对齐。
 
-- `pages_min`, `pages_low`, `pages_high`: 内存水线，用于触发不同操作。高于`pages_high`时**内存域**状态理想。低于`pages_low`触发swap。低于`pages_min`页回收压力较大。
+- `pages_min`, `pages_low`, `pages_high`: 内存水线，用于触发不同操作。高于`pages_high`时**内存域**状态理想。低于`pages_low`触发swap。低于`pages_min`时页回收压力较大。
 - `lowmem_reserve`: 每个内存域的保留内存页，用于完成一些不能失败的分配，每个内存域的保留内存数量不同。
 - `pageset`: 一个per-cpu数组，`struct per_cpu_pageset`存储了per-cpu的冷热页信息，热页指page内容仍在cache中，可以快速访问，冷页即内容不在cache中。
-- `free_area`: 数组，每个`free_area`存放了分配阶大小的page，和伙伴系统相关。
+- `free_area`: 数组，每个`free_area`存放了固定分配阶的内存块，和伙伴系统相关。
 - `active_list`, `inactive_list`: 访问频繁的page看作active。访问不频繁的page为inactive的。在回收时应该优先回收inactive状态的page。`active_list`和`inactive_list`对应两种状态page的列表。
 - `nr_scan_active`, `nr_scan_inactive`: 指定在回收时需要扫描的活跃和非活跃page数
 - `pages_scanned`: 指定了上次换出一页以来有多少页未成功扫描。

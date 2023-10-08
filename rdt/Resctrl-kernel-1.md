@@ -1,5 +1,6 @@
-#! https://zhuanlan.zhihu.com/p/647039275
-# Resctrl内核实现（一）CPU状态
+<!-- #! https://zhuanlan.zhihu.com/p/647039275 -->
+<!-- # Resctrl内核实现（一）CPU状态 -->
+## 前言
 
 resctrl是rdt机制的一个用户态接口，通过对rdt技术进行封装，提供了一套资源分配和监控机制的接口，方便用户进行使用。本文从resctrl的资源分配和监控的角度对内核源码实现进行了分析，参考的kernel版本为4.19.287。
 

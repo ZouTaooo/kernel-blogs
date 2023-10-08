@@ -1,5 +1,6 @@
-#! https://zhuanlan.zhihu.com/p/647042986
-# Resctrl内核实现（五）在group之间迁移task
+<!-- #! https://zhuanlan.zhihu.com/p/647042986 -->
+<!-- # Resctrl内核实现（五）在group之间迁移task -->
+## 前言   
 
 task的写入会导致task绑定的CLOSID和RMID改变，本文对Resctrl中task的迁移过程进行了分析。
 

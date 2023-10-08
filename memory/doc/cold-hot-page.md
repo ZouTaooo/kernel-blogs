@@ -1,4 +1,5 @@
-# 冷热页机制
+<!-- # 冷热页机制 -->
+## 前言
 
 在进行内存访问时的大概流程如下：
 
@@ -7,11 +8,11 @@
 3. 访问cache
 4. 如果cache miss，访问物理内存读入cache
 
-因此如果访问一个在cache中的物理内存能大幅度提高访问速度，在Linux中将内容仍在cache中page称为hot page。
+因此，访问一个内容在cache中的物理内存能大幅度提高访问速度，基于这个原理，在Linux中将内容仍在cache中page称为hot page，采取了一种叫做冷热页的优化机制。
 
 ## percpu_pageset_t
 
-由于每个CPU都有自己的cache，而在在Linux中内存分配最终会落在Zone上，因此在zone中有一个per-cpu的`struct per_cpu_pageset`，per-zone的per-cpu的`struct per_cpu_pageset`就负责管理在CPU在该zone上进行分配时的冷热页。
+由于每个CPU都有自己的独占cache（L1和L2），而在Linux中内存分配最终会落在内存域Zone上，因此在zone中有一个per-cpu的`struct per_cpu_pageset`，在per-zone下的per-cpu的`struct per_cpu_pageset`就负责管理在CPU在该zone上进行分配时的冷热页。
 
 ```c
 struct zone {
@@ -19,12 +20,12 @@ struct zone {
 }
 ```
 
-相关数据结构如下，`per+cpu_pageset`中有一个`per_cpu_pages`成员，冷热页的实现就在`per_cpu_pages`中。冷热页通过一个链表表示，热页放在链表首部，冷页放在链表尾部。
+相关数据结构如下，`per_cpu_pageset`中有一个`per_cpu_pages`成员，冷热页的实现就在`per_cpu_pages`中。冷热页通过一个链表表示，热页放在链表首部，冷页放在链表尾部。其中成员变量的含义如下：
 
 - `count`: 冷热链表中的page个数。
-- `high`: 当`count`超过high时说明缓存的冷热页过多，触发批量返回页帧给伙伴系统。
+- `high`: 当`count`超过high时说明缓存的冷热页过多，此时会批量返回页帧给伙伴系统。
 - `batch`: 批量移除或添加page的个数
-- `list`: 冷热链表
+- `list`: 冷热页帧链表
 
 ```c
 struct per_cpu_pages {
@@ -54,9 +55,9 @@ struct per_cpu_pageset {
 
 首先`buffered_rmqueue`会检查`gfp_flags`是否标记了`__GFP_COLD`，`!!(gfp_flags & __GFP_COLD)`中两个`!!`的作用是将cold的值限定为0或者1。根据gfp_flags确定迁移类型`migratetype`，迁移类型与内存碎片管理相关。
 
-冷热页主要优化的是单个页面的分配和释放，也就是当分配阶为0的情况。首先找到当前zone上的当前cpu的冷热链表`pcp`，检查`pcp`是否有缓存的page，如果没有则调用`rmqueue_bulk`从当前zone上分配`pcp->batch`个pages加入到冷热链表中。如果存在pages并且cold为1说明优先分配冷页，从后往前遍历，否则从前往后遍历，找到第一个满足迁移类型的page返回，可以看到冷热的概念只表示被返还的顺序，后进入的链表的页帧相对热一些，分配并不能真的保证分配的hot page在cache中，只是可能性更大。
+冷热页主要优化的是单个页面的分配和释放，也就是当分配阶为0的情况。首先找到当前zone上的当前cpu的冷热链表`pcp`，检查`pcp`是否有缓存的page，如果没有则调用`rmqueue_bulk`从当前zone上分配`pcp->batch`个pages加入到冷热链表中。如果存在pages并且cold为1说明优先分配冷页，从后往前遍历，否则从前往后遍历，找到第一个满足迁移类型的page返回，可以看到冷热的概念只表示被返还的顺序，后进入的链表的页帧相对热一些，分配并不能真的保证分配的“hot page”在cache中，只是可能性更大。
 
-`&page->lru == &pcp->list`这个判断表示在冷热链表中未找到满足迁移类型的page。此时则调用`rmqueue_bulk`后，再尝试分配一个page。
+`&page->lru == &pcp->list`这个判断表示在冷热链表中未找到满足迁移类型的page。此时会调用`rmqueue_bulk`从对应迁移类型的自由链表中分配一批的pages到冷热链表中后再尝试分配。
 
 ```c
 static struct page *buffered_rmqueue(struct zone *preferred_zone,
@@ -112,7 +113,7 @@ again:
 
 ## 单页的释放
 
-在内核中释放page的基础API是`__free_pages`，`__free_pages`会检查释放的页的分配阶是否为0，如果为0则调用`free_hot_page`。`free_hot_page`则会调用`free_hot_cold_page`携带参数表示释放的是hot-page。
+在内核中释放page的基础API是`__free_pages`，`__free_pages`会检查释放的页的分配阶是否为0，如果为0则调用`free_hot_page`。`free_hot_page`会调用`free_hot_cold_page`携带参数表示释放的是hot-page。
 
 ```c
 void __free_pages(struct page *page, unsigned int order)
@@ -139,7 +140,7 @@ void free_cold_page(struct page *page)
 
 `free_hot_cold_page`中和冷热链表相关的代码如下，cold参数决定了是将page链入链表的首部还是尾部，然后设置page的`private`字段为page的迁移类型。
 
-此时如果冷热链表的页总数`count`超过了`high`，此时调用`free_pages_bulk`返回`batch`个pages给伙伴系统。这种方式被称为**惰性合并**，能够避免大量不必要的合并操作（合并了又被分配的情况）。
+此时如果冷热链表的页总数`count`超过了`high`，调用`free_pages_bulk`返回`batch`个pages给伙伴系统。这种批量释放的方式被称为**惰性合并**，能够避免大量不必要的合并操作（合并了又被分配的情况）。
 
 ```c
 static void free_hot_cold_page(struct page *page, int cold)
@@ -171,4 +172,4 @@ static void free_hot_cold_page(struct page *page, int cold)
 
 - free的page加入热页后，一段时间内如果再次访问大概率只需要重新建立映射，而不需要将内容读取到cache中，访问速度更快。
 - 通过从伙伴系统批量分配和释放pages，减少了使用伙伴系统的次数，因此降低了伙伴系统的分裂合并的次数，同时分配速度更快。
-- 采取per-cpu的设计，区分了不同CPU的cache，同时避免了CPU同时分配内存时的竞争。
+- 采取per-cpu的设计，区分了不同CPU的cache，同时避免了CPU同时分配单页内存时的竞争。

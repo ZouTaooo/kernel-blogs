@@ -1,5 +1,6 @@
-#! https://zhuanlan.zhihu.com/p/647034304
-# coredump-文件生成配置
+<!-- #! https://zhuanlan.zhihu.com/p/647034304 -->
+<!-- # coredump-文件生成配置 -->
+## 前言
 
 核心转储文件，可以在程序dump时将当时的程序状态记录下，配合gdb工具进行分析。适合在长期运行的程序挂掉时进行分析。
 
