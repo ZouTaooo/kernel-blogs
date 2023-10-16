@@ -34,6 +34,8 @@ R -.->|exit| Z
 Z -.->|wait| Exit
 ```
 
+<center>进程的状态流转</center>
+
 可以看到Runnable就是task状态的中转站，因此调度子系统最核心的部分就是管理Runbale task，也就是就绪队列管理。
   
 
