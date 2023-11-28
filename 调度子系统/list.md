@@ -16,7 +16,26 @@
    3. 不同CPU微架构对事件的支持程度
 
 # todo
-1. Linux进程的生命周期
-2. CFS的基本设计理念（什么是CFS，如何快速理解CFS）
-3. CFS的内核设计架构
-4. HZ\jiffies\clock
+
+* 内核调度
+[x] Linux进程的生命周期
+[x] CFS的基本设计理念（什么是CFS，如何快速理解CFS）
+[x] CFS的内核设计架构
+[x] CFS 进程的创建
+[x] CFS 调度周期
+[ ] CFS 进程的消亡
+[x] CFS 调度时机与调度流程
+[x] CFS 组调度
+[x] CFS 带宽控制
+[ ] CFS SMP负载均衡\迁移
+[ ] 时间子系统-HZ/jiffes/tick
+[ ] 时间子系统-定时器
+[ ] 中断
+[ ] 内核线程
+
+* bug
+[ ] eBPF switch 坑记录
+
+* 微架构
+[ ] CPU的微架构入门
+[ ] 内存延迟指标原理 

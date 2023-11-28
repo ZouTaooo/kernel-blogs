@@ -59,30 +59,30 @@ struct rq {
 };
 ```
 
-这里存在一个问题，为什么调度类有五个只有三个就绪队列，因为stop和idle两个调度类只执行固定的进程，stop调度类用于`stop_machine.c`，停机线程的优先级高于所有的task，这也是stop调度类的优先级最高的原因。idle调度类执行的是固定的idle线程。因此这两个调度类不需要就绪队列。
+这里存在一个问题，为什么调度类有五个只有三个就绪队列，因为stop和idle两个调度类只执行固定的进程，stop调度类用于`stop_machine.c`，stop线程的优先级高于所有的task，主要用于负载均衡、热插拔等场景强行停止cpu上执行的任务，这也是stop调度类的优先级最高的原因。idle调度类执行的是固定的idle线程。因此这两个调度类不需要就绪队列。
 
 ```mermaid
 graph TB
 
 subgraph CPUS
-    C1[CPU0]
-    Cx[....]
-    C2[CPUn]
+    C1(CPU0)
+    Cx(....)
+    C2(CPUn)
 end
 
 C1 -.-> rq
 
 subgraph rq
-    cfs1[cfs_rq]
-    rq1[rt_rq]
-    dl1[dl_rq]
+    cfs1(cfs_rq)
+    rq1(rt_rq)
+    dl1(dl_rq)
 end
 
 cfs1 -.->|tasks_timeline| rb_root_cached
 
 subgraph rb_root_cached
-    rb_leftmost 
-    rb_root 
+    rb_leftmost(rb_leftmost) 
+    rb_root(rb_root) 
 end
 
 rb_root -.-> 27
@@ -99,14 +99,14 @@ subgraph
 end
 
 subgraph task_struct
-    se[sched_entity se]
+    se(sched_entity se)
 end
 
 se -.-> sched_entity
 
 subgraph sched_entity
-    run_node[rb_node]
-    vruntime[vruntime=98]
+    run_node(rb_node)
+    vruntime(vruntime=98)
 end
 
 run_node -.-> 98
@@ -173,3 +173,7 @@ container_of(se, struct task_struct, se)
 ```
 
 红黑树的通用性也是基于这个原理，其管理的真实对象只需要在结构体内添加一个`struct rb_node`变量，然后利用`container_of`这个宏就能访问到背后的真正对象，当然在转化前需要知道管理对象的真实类型。
+
+## 总结
+
+通过本篇文章应该能了解CFS的基本设计理念、内核的调度器设计框架以及CFS内核实现的基本框架。内核中的调度在每一个cpu上是独立的，每个cpu有自己就绪队列`struct rq`，`rq`内部按照调度类的需要分为`dl_rq`、`rt_rq`和`cfs_rq`。而管理这些就绪队列需要的操作集合定义在调度类中，内核中总共有五种调度类，CFS是其中的一种，每一种调度类实现了不同的调度策略。此外，`cfs_rq`的实现基于一种带缓存的红黑树数据结构。
