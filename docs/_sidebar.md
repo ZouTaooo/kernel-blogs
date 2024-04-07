@@ -1,5 +1,13 @@
 
 - [首页](/)
-- [Schdule](schedule/info.md)
-  - [设计理念与代码架构](schedule/cfs-1.md)
-  - [CFS-2](schedule/cfs-2.md)
+- Schdule
+  - [Linux任务的状态机制](schedule/task-life-cycle.md)
+  - [Linux任务的优先级机制](schedule/prio.md)
+  - [Softlockup&Hardlockup检测机制](schedule/softlockup&hardlockup.md)
+  - [CFS（一）设计理念与代码架构](schedule/cfs-1.md)
+  - [CFS（二）load_weight与vruntime](schedule/cfs-2.md)
+  - [CFS（三）调度周期与最小抢占粒度](schedule/cfs-3.md)
+  - [CFS（四）新任务的创建流程](schedule/cfs-4.md)
+  - [CFS（五）组调度](schedule/cfs-5.md)
+  - [CFS（六）PELT负载统计](schedule/cfs-6.md)
+  - [CFS（七）带宽控制](schedule/cfs-7.md)

@@ -31,7 +31,7 @@ struct sched_entity {
 }
 ```
 
-在CFS中`vruntime`最小的task会被优先调度，在引入了优先级以后我们希望高优先级的任务能够得到更多的运行时间，CFS采取的是权重值的方式影响`vruntime`的计算，每一次调度时将`wall-time`转化为`vruntime`并累计到对应的`sched_entity`上。不同优先级的task运行相同的`wall-time，但是高优先级的task具备高权重，得到的`vruntime`较小，低优先级的task具备低权重得到的`vruntime`较高，这样一段时间运行下来，高优先级的task会被调度的次数更多，运行的时间更长。
+在CFS中`vruntime`最小的task会被优先调度，在引入了优先级以后我们希望高优先级的任务能够得到更多的运行时间，CFS采取的是权重值的方式影响`vruntime`的计算，每一次调度时将`wall-time`转化为`vruntime`并累计到对应的`sched_entity`上。不同优先级的task运行相同的`wall-time`，但是高优先级的task具备高权重，得到的`vruntime`较小，低优先级的task具备低权重得到的`vruntime`较高，这样一段时间运行下来，高优先级的task会被调度的次数更多，运行的时间更长。
 
 在Linux中，CFS使用nice值来表示优先级，nice值越小其权重越大，可以理解为nice值越小优先级越高，CFS的任务的nice值范围为`[-20,19]`。通过查表`sched_prio_to_weight`可以实现nice值到权重值的转化。任务的默认nice值为0，对应的权重为1024，任意nice值的权重通过`1024*1.25^(-nice)`计算。比如nice值为-1，其权重值计算为`1024*1.25=1280`，这里会发现与`1277`这个值存在一点偏差，这是因为Linux内核在取值上进行了微调，具体微调的原因与`vruntime`的计算函数有关。
 

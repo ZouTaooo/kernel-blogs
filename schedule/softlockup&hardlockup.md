@@ -125,6 +125,68 @@ u64 hw_nmi_get_sample_period(int watchdog_thresh)
 
 `hardlockup`和`softlockup`之间通过`hrtimer`产生了交集，所以`hrtiemr`的处理函数不仅要`watch watchdog_touch_ts`进行`softlockup`检查，同时还需要`touch hrtimer_interrupts`更新中断触发次数。
 
+**NOTE：2024-03-15更新**
+`hardlockup`的超时周期是通过`cycles NMI`中断的触发周期来保障的，但是在一些具有睿频模式（`turbo mode`）的`CPU`上通过`cycles`数量推算时间这个方法会不准确，`NMI`中断的触发周期会缩小导致误报。所谓睿频模式指的是`CPU`会根据情况自动的调整`CPU`的频率和关闭`CPU`，比如在一个四核处理器上运行单线程程序，此时会关闭三个核心，提高运行核心的频率从而提高性能，并且降低功耗。但是这会带来两个问题，动态频率会导致基于`cycles NMI`中断周期不准，第二个问题是停止的`CPU`的时钟会不更新。因此在这个场景下内核中有一个配置选项`CONFIG_HARDLOCKUP_CHECK_TIMESTAMP`，开启这个配置选项以后在`NMI`中断的回调函数中会检查时间戳，如果距离上一次`hardlockup`检查过去了`4/5 * watchdog_thresh`(能够保证至少一次`hrtimer_interrupts`更新)才进行`hardlockup`检查。此外，如果`ktime`是基于`jiffies`（每个时钟中断更新一次）的，在停止的CPU上`jiffies`并不会更新，此时通过一个计数器`nmi_rearmed`判断是否达到了时间间隔要求。这个特性可以参考如下代码：
+
+```c
+#ifdef CONFIG_HARDLOCKUP_CHECK_TIMESTAMP
+static DEFINE_PER_CPU(ktime_t, last_timestamp);
+static DEFINE_PER_CPU(unsigned int, nmi_rearmed);
+static ktime_t watchdog_hrtimer_sample_threshold __read_mostly;
+
+void watchdog_update_hrtimer_threshold(u64 period)
+{
+	/*
+	 * The hrtimer runs with a period of (watchdog_threshold * 2) / 5
+	 *
+	 * So it runs effectively with 2.5 times the rate of the NMI
+	 * watchdog. That means the hrtimer should fire 2-3 times before
+	 * the NMI watchdog expires. The NMI watchdog on x86 is based on
+	 * unhalted CPU cycles, so if Turbo-Mode is enabled the CPU cycles
+	 * might run way faster than expected and the NMI fires in a
+	 * smaller period than the one deduced from the nominal CPU
+	 * frequency. Depending on the Turbo-Mode factor this might be fast
+	 * enough to get the NMI period smaller than the hrtimer watchdog
+	 * period and trigger false positives.
+	 *
+	 * The sample threshold is used to check in the NMI handler whether
+	 * the minimum time between two NMI samples has elapsed. That
+	 * prevents false positives.
+	 *
+	 * Set this to 4/5 of the actual watchdog threshold period so the
+	 * hrtimer is guaranteed to fire at least once within the real
+	 * watchdog threshold.
+	 */
+	watchdog_hrtimer_sample_threshold = period * 2;
+}
+
+static bool watchdog_check_timestamp(void)
+{
+	ktime_t delta, now = ktime_get_mono_fast_ns();
+
+	delta = now - __this_cpu_read(last_timestamp);
+	if (delta < watchdog_hrtimer_sample_threshold) {
+		/*
+		 * If ktime is jiffies based, a stalled timer would prevent
+		 * jiffies from being incremented and the filter would look
+		 * at a stale timestamp and never trigger.
+		 */
+		if (__this_cpu_inc_return(nmi_rearmed) < 10)
+			return false;
+	}
+	__this_cpu_write(nmi_rearmed, 0);
+	__this_cpu_write(last_timestamp, now);
+	return true;
+}
+#else
+static inline bool watchdog_check_timestamp(void)
+{
+	return true;
+}
+#endif
+```
+
+
 ## watchdog相关配置接口
 
 启用或禁用`watchdog`:
