@@ -1,0 +1,2 @@
+- [Google](https://www.google.com)
+- [快速入门](/快速入门.md)
