@@ -1,2 +1,3 @@
-- [Google](https://www.google.com)
-- [快速入门](/快速入门.md)
+- [知乎](https://www.zhihu.com/people/qu-ge-chui-zi-de-ida)
+- [Gitee](https://gitee.com/WoDeMiA)
+- [Github](https://github.com/ZouTaooo)
