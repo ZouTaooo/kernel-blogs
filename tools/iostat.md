@@ -1,4 +1,4 @@
-#! https://zhuanlan.zhihu.com/p/647033826
+<!-- #! https://zhuanlan.zhihu.com/p/647033826 -->
 # Linux工具-iostat
 
 iostat命令可以查看IO设备的IO信息
