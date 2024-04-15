@@ -73,10 +73,10 @@ struct irq_domain {
     const char *name;
     // irq_domain的操作函数集合
     const struct irq_domain_ops *ops;   
-    // `IC`私有数据，不同控制器类型自定义
+    // IC私有数据，不同控制器类型自定义
     void *host_data; 
     /* Optional data */
-    // 对应的`IC`设备信息
+    // 对应的IC设备信息
     struct fwnode_handle *fwnode;
     // 存储KV的数据结构
     irq_hw_number_t hwirq_max;
@@ -168,7 +168,7 @@ EXPORT_SYMBOL_GPL(irq_of_parse_and_map);
 ```
 
 `irq_of_parse_and_map`完成映射建立需要三步：
-- 获取设备对应的`hwirq`：需要由`IC`的`irq_domain`来识别设备树节点信息，得到对应`hwirq`，这个过程由`irq_domain_translate()`函数完成，涉及到`ops->xlate()`这个`callback`函数，如果`IC`有配置自己的翻译方法则进行使用`IC`自己的方式，否则就从设备的中断描述信息中获取（在`DTS`或者`ACPI`中定义）。
+- 获取设备对应的`hwirq`：需要由`IC`的`irq_domain`来识别设备树节点信息，得到对应`hwirq`，这个过程由`irq_domain_translate()`函数完成，涉及到`ops->xlate()`这个`callback`函数，如果`IC`有配置自己的翻译方法则使用`IC`自己的方式，否则就从设备的中断描述信息中获取（在`DTS`或者`ACPI`中定义）。
 ```c
 static int irq_domain_translate(struct irq_domain *d,
                 struct irq_fwspec *fwspec,
@@ -185,7 +185,7 @@ static int irq_domain_translate(struct irq_domain *d,
 }
 ```
 
-- 另外还需要从内核中分配一个有效的中断描述符，通过`irq_domain_alloc_descs()`函数完成，该函数可以为一个指定的`virq`或者由内核分配的`virq`创建中断描述符，总之如果分配成功可以获取一个有效的`virq`。
+- 另外还需要从内核中分配一个有效的中断描述符，通过`irq_domain_alloc_descs()`函数完成，该函数可以为一个指定的`virq`或者由内核分配一个`virq`并创建对应的中断描述符，总之如果分配成功可以获取一个有效的`virq`。
 
 ```c
 int irq_domain_alloc_descs(int virq, unsigned int cnt, irq_hw_number_t hwirq,
@@ -215,7 +215,7 @@ int irq_domain_alloc_descs(int virq, unsigned int cnt, irq_hw_number_t hwirq,
 
 ## hwirq的翻译流程
 
-通过以上的内容应该对内核对硬件层面的中断管理有了大致的了解，假设系统已经正常启动，内核将`root IC`中的`hwirq`翻译为最底层设备的`virq`还需要依赖于次级`IC`（`Secondary IC`）的`ISR`。`root IC`不连接到到任何其他的`IC`上，因此仅作为`IC`使用，但是次级`IC`除了接受其他设备的连接以外自身还需要连接到其他的`IC`上，因此就具备了设备和`IC`两重身份，不仅需要管理一个`irq_domain`，还需要注册自己的`ISR`。
+通过以上的内容应该对内核在硬件层面的中断管理有了大致的了解，假设系统已经正常启动，内核将`root IC`中的`hwirq`翻译为最底层设备的`virq`还需要依赖于次级`IC`（`Secondary IC`）的`ISR`。`root IC`不连接到任何其他的`IC`上，因此仅作为`IC`使用，但是次级`IC`除了接受其他设备的连接以外自身还需要连接到其他的`IC`上，因此就具备了设备和`IC`两重身份，不仅需要管理一个`irq_domain`，还需要注册自己的`ISR`。
 
 这里以`GIC`级联为例，看看`root GIC`和`Secondary GIC`之间的处理是如何联动的。首先是`root GIC`的处理函数`gic_handle_irq`，该函数在`CPU`收到了来自中断分发器（`Interrupt Distributor`）的中断时执行，该函数会读取`GIC`的中断识别寄存器(`Interrupt ACKnowledge Register, IAR`)并赋值给`irqstat`，然后从`irqstat`中获取`hwirq`，调用`handle_domain_irq()`进行处理。
 ```c

@@ -48,7 +48,7 @@ struct cfs_bandwidth {
 
 ### 节点端-cfs_rq
 
-每个任务组有`per-cpu`的`cfs_rq`（不清楚的可以了解一下组调度的数据组织结构），`cfs_rq`作为节点端要从中心端申请时间资源放入`runtime_remaining`，当`runtime_remaining`不足同时向中心端申请又失败时就会发生限流，`cfs_rq`更新相关限流信息并放入`tg->cfs_bandwidth.throttled_cfs_rq`链表中。带宽控制相关的变量含义我写在了注释中。
+每个任务组有`per-cpu`的`cfs_rq`（不清楚的可以了解一下组调度的数据组织结构），`cfs_rq`作为节点端要从中心端申请时间资源放入`runtime_remaining`，当`runtime_remaining`不足会向中心端申请，如果申请失败就会发生限流，`cfs_rq`更新相关限流信息并放入`tg->cfs_bandwidth.throttled_cfs_rq`链表中。带宽控制相关的变量含义我写在了注释中。
 
 ```c
 struct cfs_rq {
@@ -81,7 +81,7 @@ struct cfs_rq {
 * 初始化`quota` `period` `runtime`，默认新任务组拥有无限时间资源，周期为`0.1s`，时间资源池`runtime`为0
 * 初始化限流链表
 * 初始化周期性的资源重置定时器`period_timer`和时间回收定时器`slack_timer`。`period_timer`使用绝对时间，对应的回调函数为`sched_cfs_period_timer`；`slack_timer`使用相对时间，对应的回调函数为`sched_cfs_slack_timer`。
-* 初始化`distribute_running`为`0`，表示不处于`时间分发状态`。
+* 初始化`distribute_running`为`0`，表示不处于时间分发状态。
 
 现在提到的一些概念，比如时间回收、时间分发在后面会详细解释。
 
@@ -169,9 +169,9 @@ static enum hrtimer_restart sched_cfs_period_timer(struct hrtimer *timer)
 }
 ```
 
-`do_sched_cfs_period_timer`的结果会影响是否重启定时器，让我们看看`do_sched_cfs_period_timer`是如何填充时间资源池的。重置时间池的函数是`__refill_cfs_bandwidth_runtime`，在执行前需要检查一些允许不进行时间填充特殊情况：
+`do_sched_cfs_period_timer`的结果会影响是否重启定时器，让我们看看`do_sched_cfs_period_timer`是如何填充时间资源池的。重置时间池的函数是`__refill_cfs_bandwidth_runtime`，在执行前需要检查一些可以不进行时间填充的特殊情况：
 * 第一种是`quota`无限，此时`cfs_rq`申请多少就给多少不需要时间池管理
-* 第二种情况是时间池是满的，不需要重置，那么第二种情况如何检查呢？`cfs_b->idle`在时间池填充后检查任务组是否有限流链表是否为空，如果为空此时此刻时间池会处于满的状态，`cfs_b->idle`被标记为`1`，那么`idle`什么时候会被重新标记为`0`呢？当时间池的资源被申请或者主动分发到`cfs_rq`用于解除限流时，`idle`被重置为`0`，表示资源不满。因此当重置资源时状态处于`idle`并且当前无被限流的`cfs_rq`就可以认为是资源在这个周期内没有发生过分配。
+* 第二种情况是时间池是满的，不需要重置，那么第二种情况如何检查呢？`cfs_b->idle`在时间池填充后检查任务组是否有限流链表是否为空，如果为空此时此刻时间池会处于满的状态，`cfs_b->idle`被标记为`1`，那么`idle`什么时候会被重新标记为`0`呢？当时间池的资源被申请或者主动分发到`cfs_rq`用于解除限流时，`idle`被重置为`0`，表示资源不满。因此当重置资源时状态处于`idle`并且当前无被限流的`cfs_rq`就可以认为资源在这个周期内没有发生过分配。
 这两种情况下跳转到`out_deactivate`返回值为`1`，告诉上层当前处于`idle`状态，定时器不需要再重启了。注意区分一下上层函数的局部变量`idle`和`cfs_b->idle`，含义存在差异。
 
 上面是一些特殊情况的处理，如果调用`__refill_cfs_bandwidth_runtime`重置了时间资源池（执行`cfs_b->runtime = quota`）以后，当前的限流链表中存在一些被限流的`cfs_rq`此时应该主动的分发时间资源唤醒这些`cfs_rq`参与调度，`cfs_b->distribute_running`这个标志位用于限流链表管理，表示当前正处于时间分发状态（解除限流中），可以看到分发的过程实际上是放开了锁的，因此分发过程与那些没有被限流的`cfs_rq`申请时间是可以同时发生的，有可能导致时间被过度使用，那为什么还是可以并发呢？通过阅读注释，作者认为竞争只有一些极端情况才会发生，我猜测是真实情况下产生竞争的概率不高，即使发生竞态影响也不会很大。
@@ -226,7 +226,7 @@ out_deactivate:
 }
 ```
 
-此处我们还没有谈及`cfs_rq`主动申请时间，但是先植入一个概念，申请时间时如果资源池充足则期望申请到的时间片能补足到`5ms`（在用超了的情况下会尝试多申请一部分）。继续看看`distribute_cfs_runtime`是怎么主动分发时间的，遍历整个限流链表对每个`cfs_rq`计算要分配的时间是多少，这里的逻辑是想让被解除限流的`cfs_rq`只持有`1ns`的时间，但进入限流时剩余时间可能已经处于用超的状态（`runtime_remaining`是负数），因此需要补足上次用超的部分。对于每一个`cfs_rq`如果分配成功(补足到了`1ns`)则调用`unthrottle_cfs_rq`解除限流，如果分配失败或者说不能补足则还得等下个周期的时间接着补。
+此处我们还没有谈及`cfs_rq`主动申请时间，但是先植入一个概念，申请时间时如果资源池充足则期望申请到的时间片能补足到`5ms`（在用超了的情况下会尝试多申请一部分用于补足）。继续看看`distribute_cfs_runtime`是怎么主动分发时间的，遍历整个限流链表对每个`cfs_rq`计算要分配的时间是多少，这里的逻辑是想让被解除限流的`cfs_rq`只持有`1ns`的时间，但进入限流时剩余时间可能已经处于用超的状态（`runtime_remaining`是负数），因此需要补足上次用超的部分。对于每一个`cfs_rq`如果分配成功(补足到了`1ns`)则调用`unthrottle_cfs_rq`解除限流，如果分配失败或者说不能补足则还得等下个周期的时间接着补。
 
 ```c
 static u64 distribute_cfs_runtime(struct cfs_bandwidth *cfs_b，
@@ -681,7 +681,7 @@ static void __return_cfs_rq_runtime(struct cfs_rq *cfs_rq)
 }
 ```
 
-尝试启动`slack_timer`也是有一点讲究的，预期是延迟`5ms`执行，但是在启动前需要检查一下是不是已经触发或者即将出发`period_timer`重置时间池，如果即将重置那就不再需要这些`slack`时间，都多余了嗷。因此`runtime_refresh_within`会检查`period_timer`距离被触发的时间是否超过`7ms = 5ms (cfs_bandwidth_slack_period) + 2ms (min_bandwidth_expiration)`。
+尝试启动`slack_timer`也是有一点讲究的，预期是延迟`5ms`执行，但是在启动前需要检查一下是不是已经触发或者即触发`period_timer`重置时间池，如果即将重置那就不再需要这些`slack`时间，都多余了嗷。因此`runtime_refresh_within`会检查`period_timer`距离被触发的时间是否超过`7ms = 5ms (cfs_bandwidth_slack_period) + 2ms (min_bandwidth_expiration)`。
 ```c
 static void start_cfs_slack_bandwidth(struct cfs_bandwidth *cfs_b)
 {
@@ -745,7 +745,7 @@ static void do_sched_cfs_slack_timer(struct cfs_bandwidth *cfs_b)
 
 cgroup-v1目录下的相关的设定接口为`cpu.cfs_quota_us`和`cpu.cfs_period_us`。cgroup-v2没有接触过。
 
-以上是对任务组配置带宽的接口，还有一个接口可以用于调整带宽控制机制的调优，`/proc/sys/kernel/sched_cfs_bandwidth_slice_us (default=5ms)`是每次`cfs_rq`申请的期望目标值，增大该参数会导致带宽精度不够，但是能够减少申请次数，降低开销，反之能够提高精度但是会带来更多的性能开销。
+以上是对任务组配置带宽的接口，还有一个接口可以用于带宽控制机制的调优，`/proc/sys/kernel/sched_cfs_bandwidth_slice_us (default=5ms)`是每次`cfs_rq`申请的期望目标值，增大该参数会导致带宽精度不够，但是能够减少申请次数，降低开销，反之能够提高精度但是会带来更多的性能开销。
 
 ## 总结
 

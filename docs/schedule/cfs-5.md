@@ -2,20 +2,18 @@
 
 ## 前言
 
-以进程为CPU资源的分配单位在某些场景下是有缺陷的，比如容器场景需要支持按照组做资源的分配，然后组内再按照进程做细化的资源分配。组调度技术是cgroup实现的一个重要组成部分。
+`CFS`组调度指的是一种`CPU`资源的分配方式，普通的CFS调度是以进程为资源的分配单位，而组调度则将进程以组划分，在任务组之间做第一轮的资源分配，然后在组内部再进行第二轮的资源分配。这种特性在容器场景非常有用。
 
-CFS组调度需要开启`CONFIG_CGROUP_SCHED`和`CONFIG_FAIR_GROUP_SCHED`选项。
+开启`CFS`组调度需要配置`CONFIG_CGROUP_SCHED`和`CONFIG_FAIR_GROUP_SCHED`选项。
 
 ## 组调度相关数据结构的组织
 
-相比于不支持组调度的CFS主要有两点改变，一个是调度实体对应的可能不是一个`task`，有可能是一组`task`，并且这组`task`的管理也是使用的`cfs_rq`，形成一种嵌套的树状结构，这种表示一组任务的调度实体可以被称作`group-se`，`group-se`的`my_q`指针指向一个`cfs_rq`。第二点是，组调度管理的多个`se`可能会分布在多个cpu上，因此不同核上的`se`需要在每个cpu上有独立的管理，除此之外不同核上的`se`归根结底还是属于一个任务组需要有一个数据结构`task_group`归纳所有核上的数据，通过`task_group`可以找到每个核上的`group-se`与其挂载的`cfs_rq`。
+`CFS`为了支持组调度主要有以下几点设计上的改变：
+- 是调度实体对应的可能是一组`task`，并且这组`task`的管理也是使用的`cfs_rq`，层级的`cfs_rq`形成了一种嵌套的树状结构，这种表示一组任务的调度实体暂时被称作`group-se`，`group-se`用`my_q`指针指向一个`cfs_rq`。
+- 组调度管理的多个`se`可能会分布在多个`CPU`上，因此不同核上的`se`需要在每个`CPU`上独立管理。
+- 不同核上的`se`归根结底还是属于一个任务组，需要有一个数据结构`task_group`管理任务组在所有核上的调度实体，通过`task_group`可以找到每个核上的`group-se`与其对应的`cfs_rq`。
 
 ### task_group
-
-`task_group`表示一个任务组，其中`se`和`cfs_rq`是`per-cpu`的数组。
-* `per-cpu-cfs_rq`用于管理任务组中分布在不同cpu上的调度实体。
-* `per-cpu-se`是`group-se`，每个核上的`se[cpu]->my_q`指向`cfs_rq[cpu]`。任务组在每一个cpu上的都有一个`group-se`。
-* `parent`可以找到上层`task_group`，`se[cpu]->cfs_rq`（`se`所处的`cfs_rq`）指向的就是`parent->cfs_rq[cpu]`。
 
 ```c
 /* Task group related information */
@@ -27,10 +25,19 @@ struct task_group {
 }
 ```
 
-在内核初始化的时候有一个全局的`struct task_group`命名为`root_task_group`。这个`root_task_group`实现了任务组管理的统一，在CFS的视角初始的系统中所有的任务都属于根任务组，需要注意的根任务组具有一些特殊性，其`parent = NULL`并且`se = {NULL, NULL, ...}`，根任务组已经没有上层的任务组了，因此不需要`se`和`parent`。
+`task_group`表示一个任务组，其中`se`和`cfs_rq`是`per-cpu`的指针数组。
+* `per-cpu-cfs_rq`用于管理任务组中分布在不同`CPU`上的调度实体。
+* `per-cpu-se`是`group-se`，每个核上的`se[cpu]->my_q`指向`cfs_rq[cpu]`。任务组在每一个`CPU`上的都有一个`group-se`。
+* `parent`可以找到上层`task_group`，`task_group->se[cpu]->cfs_rq`（`se`所处的`cfs_rq`）指向的就是`task_group->parent->cfs_rq[cpu]`。
+
+
+在内核初始化的时候有一个全局的`struct task_group`命名为`root_task_group`，在`CFS`的视角，系统启动时中所有的任务都属于根任务组。根任务组具有一些特殊性，其`parent = NULL`并且`se = {NULL, NULL, ...}`，根任务组已经没有上层的任务组了，因此不需要`se`和`parent`。
 
 ### cfs_rq
-`cfs_rq`新增了`rq`指向当前`cfs_rq`所属的`rq`以及`tg`指向所属的`task_group`。
+
+`cfs_rq`新增了两个成员变量：
+- `rq`指向当前`cfs_rq`所属的`rq`。
+- `tg`指向所属的`task_group`。
 ```c
 struct cfs_rq {
     struct rq		*rq;    /* 指向当前cfs_rq 挂载到的rq，用以区分不同cpu */
@@ -42,7 +49,7 @@ struct cfs_rq {
 
 `group-se`需要下面会挂载一个`cfs_rq`，因此为了支持组调度`sched_entity`新增了一些变量。
 * `depth`表示层级，`root_task_group`的`cfs_rq`管理的`se`的`depth`都是0，对于其他调度实体`se->depth = parent->depth + 1`。
-* `parent`指向任务组在上层`cfs_rq`中的`group-se`。`root_task_group`中的`se`其`parent`为`NULL`。
+* `parent`指向任务组在上层`cfs_rq`中的`group-se`。`root_task_group`中的`se->parent`为`NULL`。
 * `cfs_rq`指向管理当前`se`的`cfs_rq`
 * `my_q`可以用以区分`task-se`和`group-se`。`group-se`的`my_q`指向管理的`cfs_rq`。`task-se`的`my_q`为`NULL`。
 
@@ -269,13 +276,13 @@ pick_next_task_fair(struct rq *rq, struct task_struct *prev, struct rq_flags *rf
 
 ## 组调度的权重
 
-我们知道权重会影响cpu的时间分配比例，但是一个任务组的多个任务会分多个cpu上去执行，每个cpu上的`group_cfs_rq`管理的任务数量和任务权重是不一样的，因此任务组的权重应该按照比例分配到每个cpu的`group-se`上这样才是合理的，因此`group-se.load.weight = tg->shares * ratio`得来，总量由`tg->shares`决定，分配比例`ratio`由每个`group-se`下面的`se`的权重之和的分布。
+我们知道权重会影响cpu的时间分配比例，但是一个任务组的多个任务会分布在多个cpu上执行，每个cpu上的`group_cfs_rq`管理的任务数量和任务权重是不一样的，因此任务组的权重应该按照比例分配到每个cpu的`group-se`上这样才是合理的，因此`group_se.load.weight = tg->shares * ratio`，总量由`tg->shares`决定，分配比例`ratio`由各个`group-se`下面的`se`的权重之和的占比确定。
 
-但是上述是理论上的计算方法，实际上的由于计算`tg->load.weight`需要对`cfs_rq->load.weight`的权重求和，需要访问多个核上的数据会产生锁竞争，因此并没有使用`load.weight`的占比求`ratio`，`load.weight`的替代品是`load_avg`，因此`load_avg`更新时就需要对应的更新`group-se`的权重，具体的更新点会发生在四处位置：
-* `entity_tick`时钟tick
-* `enqueue_entity`任务组加入新任务
-* `dequeue_entity`任务组移除任务
-* `sched_group_set_shares`任务组设置可分配的总权重
+但是上述是理论上的计算方法，实际上的由于计算`tg->load.weight`需要对`cfs_rq->load.weight`的权重求和，访问多个核上的数据会产生锁竞争，因此并没有使用`load.weight`的占比求`ratio`，`load.weight`的替代品是`load_avg`，因此`load_avg`更新时就需要更新对应的`group-se`的权重，具体的更新点会发生在四处位置：
+* `entity_tick()`时钟`Tick`
+* `enqueue_entity()`任务组加入新任务
+* `dequeue_entity()`任务组移除任务
+* `sched_group_set_shares()`任务组设置可分配的总权重
 
 在这里先不考虑是如何设定任务组的总权重`shares`的，只关注如何权重`shaers`是如何分配到每个`group-se`上的。在每次`shares`变化或者某个`cfs_rq`或者`se`的`load_avg`变化时调用`update_cfs_group`更新该cpu上`group-se`的`load.weight`，这个过程可能是递归的，因为本层的`load_avg`改变了会导致上层任务组的总负载也会发生改变，所以需要自底向上每一层都调用`update_cfs_group`来进行更新。就像这样：
 ```c
@@ -332,14 +339,14 @@ static long calc_group_shares(struct cfs_rq *cfs_rq)
 ### 组调度的tick抢占
 
 举例，一些状态描述如下
-* 当前在cpu0上，根任务组有`cfs_rq`3个`se`分别是`A`、`B`、`C`，该`cfs_rq`称作`root_cfs_rq`.
+* 当前在`CPU-0`上，根任务组的`cfs_rq`有3个`se`分别是`A`、`B`、`C`，该`cfs_rq`称作`root_cfs_rq`.
 * `A`是一个`group-se`，下面的`cfs_rq`有`D`、`E`两个`task-se`,该`cfs_rq`称作`child_cfs_rq`。
 * `child_cfs_rq->curr`是`D`
 * `root_cfs_rq->curr`是`A`
 
-此时发生tick抢占检查，检查会自低向上进行，首先检查`child_cfs_rq`能否发生抢占`D`，如果抢占成功则标记`TIF_NEED_RESCHED`，然后上层依然要检查B（假设B是`vruntime`最小的）能否抢占`A`。逐层的检查中只要有一层抢占成功了就需要重新调度。
+此时发生`Tick`抢占检查，检查会自低向上进行，首先检查`child_cfs_rq`能否发生抢占`D`，如果抢占成功则标记`TIF_NEED_RESCHED`，然后上层依然要检查`B`（假设`B`是`vruntime`最小的）能否抢占`A`。逐层的检查中只要有一层抢占成功了就需要重新调度。
 
-**Note**：`entity_tick`不止做抢占检查，还有一些周期性tick的数据更新，因此即使抢占已经给`current`标记了`TIF_NEED_RESCHED`依然需要向上执行。
+**Note**：`entity_tick()`不止做抢占检查，还有一些周期性`Tick`的数据更新，因此即使抢占已经给`current`标记了`TIF_NEED_RESCHED`依然需要向上执行。
 
 ```c
 static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
@@ -362,4 +369,4 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 
 ## 总结
 
-组调度的实现的关键在于`group-se`和`task_group`，这两个数据结构建立起了层级的可嵌套的调度队列。这种复杂的数据结构也带了一些问题，不管是出队、入队、tick等操作，原本对`se`的操作都需要转成迭代的操作，因为上层的调度信息（权重、负载、统计信息等）都依赖于底层，会触发连锁的更新。除此之外，组调度的核心在于cpu时间的按组分配，而任务组有在每个cpu上都有一个化身`group-se`，因此组的权重需要在`group-se`间分配，因此在本文中介绍了`task_group->shares`是如何分配到每个核上的`group-se`上的，分配算法依赖于`cfs_rq`的负载信息，但是本文没有详细介绍负载是如何更新和统计的，这部分内容与`PELT（per-entity load tracking）`相关。
+组调度的实现的关键在于`group-se`和`task_group`，这两个数据结构建立起了层级的可嵌套的调度队列。这种复杂的数据结构也带了一些问题，不管是出队、入队、`Tick`等操作，原本对`se`的操作都需要转成迭代的操作，因为上层的调度信息（权重、负载、统计信息等）都依赖于底层，会触发连锁的更新。除此之外，组调度的核心在于`CPU`时间的按组分配，而任务组有在每个`CPU`上都有一个化身`group-se`，因此任务组的权重需要在`group-se`间分配，因此在本文中介绍了`task_group->shares`是如何分配到每个核上的`group-se`上的，分配算法依赖于`cfs_rq`的负载信息，但是本文没有详细介绍负载是如何更新和统计的，这部分内容与`PELT（per-entity load tracking）`相关。
