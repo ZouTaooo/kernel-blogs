@@ -34,7 +34,6 @@
   - [iostat](tools/iostat.md)
   - [iotop](tools/iotop.md)
   - [pidstat](tools/pidstat.md)
-  - [pidstat](tools/pidstat命令.md)
   - [top](tools/top.md)
   - [coredump-文件生成配置 ](tools/coredump.md)
   - [GDB的常用方法](tools/gdb.md)

@@ -3,7 +3,8 @@
 
 在谈Linux内存管理框架之前需要了解NUMA，NUMA是非一致性内存访问(Uon-Uniform Memory Access)的缩写，与之相反的是一致性内存访问UMA。在多核的UMA架构的机器上，CPU视角下所有的内存都是均匀的，不同CPU访问同一块内存的延迟是相同；而在NUMA架构的机器上内存被划分为不同的区域，对CPU来说内存是不均匀的，存在着远端内存和本地内存的区别，访问远端内存的代价更高。
 
-![UMA和NUMA](https://img2023.cnblogs.com/blog/3174293/202310/3174293-20231008112821975-1160341054.png)
+<!-- ![UMA和NUMA](https://img2023.cnblogs.com/blog/3174293/202310/3174293-20231008112821975-1160341054.png) -->
+![UMA和NUMA](../imgs/numa.png)
 
 <center>UMA与NUMA的区别</center>
 

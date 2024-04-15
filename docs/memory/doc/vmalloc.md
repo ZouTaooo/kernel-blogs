@@ -16,7 +16,8 @@ void *vmalloc(unsigned long size)
 
 在内核地址空间中低地址部分采取的是直接映射的方式，通过虚拟地址减去地址偏移就能得到物理地址，vmalloc区域和直接映射区域之间通过8MB的安全间隙隔开，`vmalloc`在每次调用时都会找到一片连续的内核虚拟地址空间满足分配要求，之后分配物理内存并建立页表映射。
 
-![vmalloc](https://img2023.cnblogs.com/blog/3174293/202310/3174293-20231008165904593-832449549.png)
+<!-- ![vmalloc](https://img2023.cnblogs.com/blog/3174293/202310/3174293-20231008165904593-832449549.png) -->
+![vmalloc](../imgs/vmalloc.png)
 <center>直接映射区与vmalloc区域</center>
 
 因此，调用`vmalloc`分配内存有三步：

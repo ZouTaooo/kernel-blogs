@@ -9,8 +9,8 @@
 
 复合页由连续的多个page构成，其中首个page称为head page，剩余的page都称作tail page。
 
-<!-- ![复合页的设计](../imgs/compound.png) -->
-![复合页的设计](https://img2023.cnblogs.com/blog/3174293/202310/3174293-20231008103244950-1760843094.png)
+![复合页的设计](../imgs/compound.png)
+<!-- ![复合页的设计](https://img2023.cnblogs.com/blog/3174293/202310/3174293-20231008103244950-1760843094.png) -->
 <center>复合页的设计</center>
 
 所有的page的`first_page`字段都存放指向head page的指针（该图来自于《深入Linux内核架构》，图中用的是private指针和阅读的code中的实现略有区别），此外head page后的第一个page，即第一个tail page的`lru.next`和`lru.prev`分别存放释放复合页的函数指针以及复合页的分配阶。

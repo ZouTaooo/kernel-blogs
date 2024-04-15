@@ -1,7 +1,7 @@
 <!-- ## 持久映射和固定映射 -->
 ## 前言
 
-![Alt text](https://img2023.cnblogs.com/blog/3174293/202310/3174293-20231008161331374-149371229.png)
+![内核地址空间](../imgs/kernel_addr_space.png)
 
 <center>内核地址空间的划分</center>
 

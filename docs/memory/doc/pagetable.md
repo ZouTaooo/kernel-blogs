@@ -7,7 +7,7 @@
 
 Linux在2.6.25版本使用的是四级页表。
 
-![Alt text](../imgs/image.png)
+![Alt text](../imgs/pagetable.png)
 
 - PGD全局页目录表
 - PUD上层页目录表
