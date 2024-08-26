@@ -14,6 +14,7 @@
 * [ ] CFS SMP负载均衡\迁移
 * [ ] 内核线程
 * [ ] load1原理
+* [x] CFS调度参数: sched_wakeup_granularity
 
 ## 中断子系统
 
@@ -36,11 +37,13 @@
 * [ ] 内存的初始化
 * [ ] 内存回收机制(直接回收、间接回收)
 * [ ] 内存的使用(page cache\swap cache\slab)
+* [ ] meminfo详解
 
 ## bug
 
 * [ ] eBPF switch 坑记录
 
 ## 微架构
+
 * [ ] intel CPU的微架构入门
-* [ ] 内存延迟指标原理 
+* [ ] 内存延迟指标原理
