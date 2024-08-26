@@ -1,7 +1,8 @@
-<!-- Softlockup&Hardlockup检测机制 -->
-## 前言 
+# Softlockup&Hardlockup检测机制
 
-`Linux`自身具备一定的异常检测机制，`softlockup`和`hardlockup`是典型的两种，`softlockup`检测内核是否出现了长时间不调度其他任务执行的异常情况。`hardlockup`则更进一步检测内核是否出现了长时间不响应中断的异常情况。`softlockup`和`hardlockup`的定义如下：
+## 前言
+
+Linux自身具备一定的异常检测机制，`softlockup`和`hardlockup`是典型的两种，`softlockup`检测内核是否出现了长时间不调度其他任务执行的异常情况。`hardlockup`则更进一步检测内核是否出现了长时间不响应中断的异常情况。`softlockup`和`hardlockup`的定义如下：
 > A 'softlockup' is defined as a bug that causes the kernel to loop in kernel mode for more than 20 seconds, without giving other tasks a chance to run.
 > A 'hardlockup' is defined as a bug that causes the CPU to loop in kernel mode for more than 10 seconds, without letting other interrupts have a chance to run.
 
@@ -20,10 +21,9 @@ static DEFINE_PER_CPU(unsigned long, watchdog_touch_ts);
 static DEFINE_PER_CPU(unsigned long, hrtimer_interrupts);
 ```
 
-在内核中存在三类程序可以被执行的，按照优先级从高到底分别是`NMI`处理函数、`Normal Interrupt`处理函数和`Task`。从本质上来说，`softlockup`检测的是`NMI`和`Normal Interrupt`正常响应的情况下，`Task`之间的调度能否正常发生，`hardlockup`检测的是`NMI`正常响应的情况下，`Normal Interrupt`能否正常响应和被调度执行。
+在内核中存在三类程序可以被执行的，按照优先级从高到底分别是`NMI`处理函数、`Normal Interrupt`处理函数和Task。从本质上来说，`softlockup`检测的是`NMI`和`Normal Interrupt`正常响应的情况下，Task之间的调度能否正常发生，`hardlockup`检测的是`NMI`正常响应的情况下，`Normal Interrupt`能否正常响应和被调度执行。
 
 **Note**：`NMI`作为不可屏蔽中断，保证了任何条件下都能执行。
-
 
 ### softlockup
 
@@ -43,13 +43,14 @@ static int is_softlockup(unsigned long touch_ts)
 }
 ```
 
-为了保证`softlockup`的有效性，更新`watchdog_touch_ns`的`Task`必须拥有最高的任务优先级，否则即使正常发生调度低优先级任务也无法及时更新时间戳。因此在老的内核版本更新`watch_touch_ns`的`Task`是`[watchdog/x]`，随着`STOP`调度类（比实时任务的优先级更高）的引入，更新线程变成了`[migration/x]`。
+为了保证`softlockup`的有效性，更新`watchdog_touch_ns`的Task必须拥有最高的任务优先级，否则即使正常发生调度低优先级任务也无法及时更新时间戳。因此在老的内核版本更新`watch_touch_ns`的Task是`[watchdog/x]`，随着`STOP`调度类（比实时任务的优先级更高）的引入，更新线程变成了`[migration/x]`。
 
-`migration`线程作为内核中优先级最高的线程，负责内核热插拔、停止`CPU`运行等工作。`migration`线程管理了一个`work_queue`，当有任务需要执行时`migration`就会进入`RUNNABLE`状态等待调度，一旦发生调度`migration`线程一定能够拿到执行权更新`watchdog_touch_ns`，保证了`softlockup`检查的有效性。
+`migration`线程作为内核中优先级最高的线程，负责内核热插拔、停止CPU运行等工作。`migration`线程管理了一个`work_queue`，当有任务需要执行时`migration`就会进入`RUNNABLE`状态等待调度，一旦发生调度`migration`线程一定能够拿到执行权更新`watchdog_touch_ns`，保证了`softlockup`检查的有效性。
 
 而检查`softlockup`的任务必须交给优先级更高的中断，内核中的`hrtimer`可以周期性的触发中断，在`hrtimer`的处理函数`watchdog_timer_fn`中可以检查`[migration/x]`是否正常更新了`watchdog_touch_ns`，`hrtimer`定时器的触发周期是`softlockup_thresh / 5`（默认值是`4s`）。
 
 `softlockup`检查机制的整体流程如下：
+
 - `hrtimer`周期性的触发执行中断处理程序`watchdog_timer_fn()`：
   1. 向`work_queue`插入任务`softlockup_fn`
   2. 检查`watchdog_touch_ns`是否异常
@@ -60,8 +61,7 @@ static int is_softlockup(unsigned long touch_ts)
   3. 更新`watchdog_touch_ns`
   4. `work_queue`为空，进入睡眠
 
-如果`migration`线程在任务队列中长时间没有被调度执行（核上的任务长时间的占据了`CPU`），则说明出现了`softlockup`异常，需要对现场进行`dump`。
-
+如果`migration`线程在任务队列中长时间没有被调度执行（核上的任务长时间的占据了CPU），则说明出现了`softlockup`异常，需要对现场进行`dump`。
 
 ```mermaid
 graph TB
@@ -91,10 +91,8 @@ update -.-> |touch|dog
 queue -.-> |唤醒|work
 ```
 
-
-<center>softlockup检查机制的整体流程</center>
-
 ### hardlockup
+
 `hardlockup`的检测机制和`softlockup`类似，但是检测的目标不同，`hardlockup`检测的是普通中断长时间不响应，`hardlockup`的检查在`kernel/watchdog.c`的`is_hardlockup`中实现，判断`hrtimer_interrupts`是否在进行递增，如果没有递增则认为发生了`hardlockup`。
 
 ```c
@@ -112,7 +110,7 @@ bool is_hardlockup(void)
 ```
 
 `hardlockup`的默认超时时长`watchdog_thresh`是`10s`，是`softlockup`的一半。和`softlockup`不一样的是`hrtimer_interrupts`没有记录时间戳信息，如何判断是否超时呢？
-`Linux`使用的是周期性触发的`NMI`中断，`perf subsystem`有硬件计数器可以记录`cycles`事件，当计数器达到设定的阈值会触发一次溢出的`NMI`中断，而记录的`cycles`周期数与时间存在关系，具体可以看`watchdog_nmi_enable()`函数（在`kernel/watchdog.c`中），顺着调用链可以看到`hardlockup_detector_event_create()`函数（在`kernel/watchdog_hld.c`中）调用了`hw_nmi_get_sample_period()`（在`arch/x86/kernel/apic/hw_nmi.c`中），这个函数是一个体系结构相关的函数，在这里设置了`cycles`溢出的`NMI`中断的触发周期为`watchdog_thresh`。
+Linux使用的是周期性触发的`NMI`中断，`perf subsystem`有硬件计数器可以记录`cycles`事件，当计数器达到设定的阈值会触发一次溢出的`NMI`中断，而记录的`cycles`周期数与时间存在关系，具体可以看`watchdog_nmi_enable()`函数（在`kernel/watchdog.c`中），顺着调用链可以看到`hardlockup_detector_event_create()`函数（在`kernel/watchdog_hld.c`中）调用了`hw_nmi_get_sample_period()`（在`arch/x86/kernel/apic/hw_nmi.c`中），这个函数是一个体系结构相关的函数，在这里设置了`cycles`溢出的`NMI`中断的触发周期为`watchdog_thresh`。
 
 ```c
 u64 hw_nmi_get_sample_period(int watchdog_thresh)
@@ -126,7 +124,7 @@ u64 hw_nmi_get_sample_period(int watchdog_thresh)
 `hardlockup`和`softlockup`之间通过`hrtimer`产生了交集，所以`hrtiemr`的处理函数不仅要`watch watchdog_touch_ts`进行`softlockup`检查，同时还需要`touch hrtimer_interrupts`更新中断触发次数。
 
 **NOTE：2024-03-15更新**
-`hardlockup`的超时周期是通过`cycles NMI`中断的触发周期来保障的，但是在一些具有睿频模式（`turbo mode`）的`CPU`上通过`cycles`数量推算时间这个方法会不准确，`NMI`中断的触发周期会缩小导致误报。所谓睿频模式指的是`CPU`会根据情况自动的调整`CPU`的频率和关闭`CPU`，比如在一个四核处理器上运行单线程程序，此时会关闭三个核心，提高运行核心的频率从而提高性能，并且降低功耗。但是这会带来两个问题，动态频率会导致基于`cycles NMI`中断周期不准，第二个问题是停止的`CPU`的时钟会不更新。因此在这个场景下内核中有一个配置选项`CONFIG_HARDLOCKUP_CHECK_TIMESTAMP`，开启这个配置选项以后在`NMI`中断的回调函数中会检查时间戳，如果距离上一次`hardlockup`检查过去了`4/5 * watchdog_thresh`(能够保证至少一次`hrtimer_interrupts`更新)才进行`hardlockup`检查。此外，如果`ktime`是基于`jiffies`（每个时钟中断更新一次）的，在停止的`CPU`上`jiffies`并不会更新，此时通过一个计数器`nmi_rearmed`判断是否达到了时间间隔要求。这个特性可以参考如下代码：
+`hardlockup`的超时周期是通过`cycles NMI`中断的触发周期来保障的，但是在一些具有睿频模式（`turbo mode`）的CPU上通过`cycles`数量推算时间这个方法会不准确，`NMI`中断的触发周期会缩小导致误报。所谓睿频模式指的是CPU会根据情况自动的调整CPU的频率和关闭CPU，比如在一个四核处理器上运行单线程程序，此时会关闭三个核心，提高运行核心的频率从而提高性能，并且降低功耗。但是这会带来两个问题，动态频率会导致基于`cycles NMI`中断周期不准，第二个问题是停止的CPU的时钟会不更新。因此在这个场景下内核中有一个配置选项`CONFIG_HARDLOCKUP_CHECK_TIMESTAMP`，开启这个配置选项以后在`NMI`中断的回调函数中会检查时间戳，如果距离上一次`hardlockup`检查过去了`4/5 * watchdog_thresh`(能够保证至少一次`hrtimer_interrupts`更新)才进行`hardlockup`检查。此外，如果`ktime`是基于`jiffies`（每个时钟中断更新一次）的，在停止的CPU上`jiffies`并不会更新，此时通过一个计数器`nmi_rearmed`判断是否达到了时间间隔要求。这个特性可以参考如下代码：
 
 ```c
 #ifdef CONFIG_HARDLOCKUP_CHECK_TIMESTAMP
@@ -186,27 +184,32 @@ static inline bool watchdog_check_timestamp(void)
 #endif
 ```
 
-
 ## watchdog相关配置接口
 
 启用或禁用`watchdog`:
+
 - `/proc/sys/kernel/soft_watchdog`：启用或禁用`softlockup`
 - `/proc/sys/kernel/nmi_watchdog`：启用或禁用`hardlockup`
 - `/proc/sys/kernel/watchdog`: 同时启用或禁用`softlockup` 和 `hardlockup`，读取的返回值是`soft_watchdog`和`nmi_watchdog`取或。
 
 设置哪些`core`启用`watchdog`:
+
 - `/proc/sys/kernel/watchdog_cpumask`
 
 设置`lockup`超时门限：
+
 - `/proc/sys/kernel/watchdog_thresh`:设置`NMI watchdog`超时门限，`softlockup_thresh`是`2 * watchdog_thresh`
 
 设置超时的处理：
+
 - `/proc/sys/kernel/hardlockup_panic`：出现`hardlockup`时是否`panic`
 
 ## 相关源码
+
 ### watchdog初始化
 
 `watchdog_enable`（`kernel/watchdog.c`）执行流程：
+
 1. 启动`hrtimer`
    - 设置`hrtimer`的中断处理函数`watchdog_timer_fn`
    - 设置定时器触发周期为`2 * watchdog_thresh / 5`
@@ -232,6 +235,7 @@ static void watchdog_enable(unsigned int cpu)
 ### hrtimer
 
 `watchdog_timer_fn()`（`kernel/watchdog.c`）执行流程：
+
 1. 递增`hrtimer_interrupts`
 2. 向`migration`线程的`work_queue`插入`softlockup_fn()`，让`migration`进入调度队列
 3. 检查`softlockup`

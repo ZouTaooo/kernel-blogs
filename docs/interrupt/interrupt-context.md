@@ -3,18 +3,19 @@
 ## 前言
 
 中断处理过程中会禁止抢占，如果中断处理函数不能尽快执行完成就会影响系统的实时性，为此内核将中断的处理过程分为上半部(`Top Half`)和下半部(`Bottom Half`)，将耗时操作推迟到下半部异步执行。
+
 * 中断上半部：在上半部中执行一些能够快速完成的动作，比如响应外设请求。
 * 中断下半部：在下半部中执行一些耗时的动作，比如网络协议栈解析
 
-因此在内核中`CPU`就有可能处于三种上下文：
-* 硬中断上下文：`CPU`在执行中断上半部时处于硬中断上下文，在较新的内核中断设计中，硬中断上下文会禁用中断，因此不会产生中断嵌套，只有等待当前中断上半部执行结束后才能响应下一个中断。
-* 软中断上下文：`CPU`在执行中断下半部时处于软中断上下文，在软中断上下文中可以被中断抢占，但是在`CPU`上软中断不允许嵌套，如果在执行中断下半部时发生中断，在处理完新的中断上半部之后不会进入新的软中断上下文。
-* 进程上下文：`CPU`在执行进程代码时处于进程上下文
+因此在内核中CPU就有可能处于三种上下文：
+
+* 硬中断上下文：CPU在执行中断上半部时处于硬中断上下文，在较新的内核中断设计中，硬中断上下文会禁用中断，因此不会产生中断嵌套，只有等待当前中断上半部执行结束后才能响应下一个中断。
+* 软中断上下文：CPU在执行中断下半部时处于软中断上下文，在软中断上下文中可以被中断抢占，但是在CPU上软中断不允许嵌套，如果在执行中断下半部时发生中断，在处理完新的中断上半部之后不会进入新的软中断上下文。
+* 进程上下文：CPU在执行进程代码时处于进程上下文
 
 内核使用了一个`per-pcu`的变量`preempt_count`来区分这些上下文，同时管理中断嵌套、抢占行为。
 
 ## preempt_count
-
 
 `preempt_count`是一个`32 bits`的整数，`32 bits`被划分为如下五个部分:
 
@@ -64,7 +65,7 @@
 #define hardirq_count()	(preempt_count() & HARDIRQ_MASK)
 #define softirq_count()	(preempt_count() & SOFTIRQ_MASK)
 #define irq_count()	(preempt_count() & (HARDIRQ_MASK | SOFTIRQ_MASK \
-				 | NMI_MASK))
+                 | NMI_MASK))
 
 /* 
  * in_irq()       - We're in (hard) IRQ context
@@ -80,9 +81,10 @@
 #define in_serving_softirq()	(softirq_count() & SOFTIRQ_OFFSET)
 #define in_nmi()		(preempt_count() & NMI_MASK)
 #define in_task()		(!(preempt_count() & \
-				   (NMI_MASK | HARDIRQ_MASK | SOFTIRQ_OFFSET)))
+                   (NMI_MASK | HARDIRQ_MASK | SOFTIRQ_OFFSET)))
 ```
 
 通过`preempt_count`可以判断当前所处的上下文。需要注意软中断上下文有两个检查函数：
+
 * `in_softirq()`取`bits[8,16)`进行判断是否是软中断上下文，因此宏观上中断下半部禁用也可以被认为是软中断上下文。
 * `in_serving_softirq()`判断当前是否处于中断下半部执行过程中，可以取`softirq count`这个`bit`位进行确认。

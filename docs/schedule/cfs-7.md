@@ -1,8 +1,8 @@
-<!-- CFS（七）带宽控制 -->
+# 带宽控制
+
 ## 前言
 
 CFS带宽控制顾名思义是控制CPU的使用量，作为CFS一个可配置特性需要开启`CONFIG_CGROUP_SCHED` `CONFIG_FAIR_GROUP_SCHED` 和 `CONFIG_CFS_BANDWIDTH`三个配置选项，实现的效果就是对任务组实施CPU带宽限流，让任务组在单位周期内只能使用定量的CPU时间。这里有两个关键点，一个是实施的对象是任务组，第二个是限制的资源是CPU时间而不是算力（没有考虑异构系统的算力不均衡）。
-
 
 ## 核心思想
 
@@ -11,6 +11,7 @@ CFS带宽控制顾名思义是控制CPU的使用量，作为CFS一个可配置�
 ## 相关数据结构
 
 ### 中心端-task_group
+
 `task_group`增加了一个`struct cfs_bandwidth`结构体用于管理时间资源池，相关的成员变量的含义和作用我写在了注释中。
 
 ```c
@@ -48,7 +49,7 @@ struct cfs_bandwidth {
 
 ### 节点端-cfs_rq
 
-每个任务组有`per-cpu`的`cfs_rq`（不清楚的可以了解一下组调度的数据组织结构），`cfs_rq`作为节点端要从中心端申请时间资源放入`runtime_remaining`，当`runtime_remaining`不足会向中心端申请，如果申请失败就会发生限流，`cfs_rq`更新相关限流信息并放入`tg->cfs_bandwidth.throttled_cfs_rq`链表中。带宽控制相关的变量含义我写在了注释中。
+每个任务组有PER-CPU的`cfs_rq`（不清楚的可以了解一下组调度的数据组织结构），`cfs_rq`作为节点端要从中心端申请时间资源放入`runtime_remaining`，当`runtime_remaining`不足会向中心端申请，如果申请失败就会发生限流，`cfs_rq`更新相关限流信息并放入`tg->cfs_bandwidth.throttled_cfs_rq`链表中。带宽控制相关的变量含义我写在了注释中。
 
 ```c
 struct cfs_rq {
@@ -69,6 +70,7 @@ struct cfs_rq {
 ## 源码解析
 
 通过了解带宽控制的思路和相关数据结构应该对该机制有了一个大概的了解，下面就通过对源码解析学习一下带宽控制的一些细节。带宽控制主要有几个方面：
+
 * 带宽控制初始化
 * 时间资源补充
 * 节点端时间申请
@@ -78,6 +80,7 @@ struct cfs_rq {
 ### 带宽控制初始化
 
 当创建一个任务组时需要调用`init_cfs_bandwidth`初始化带宽控制信息，初始化操作如下：
+
 * 初始化`quota` `period` `runtime`，默认新任务组拥有无限时间资源，周期为`0.1s`，时间资源池`runtime`为0
 * 初始化限流链表
 * 初始化周期性的资源重置定时器`period_timer`和时间回收定时器`slack_timer`。`period_timer`使用绝对时间，对应的回调函数为`sched_cfs_period_timer`；`slack_timer`使用相对时间，对应的回调函数为`sched_cfs_slack_timer`。
@@ -109,6 +112,7 @@ void init_cfs_bandwidth(struct cfs_bandwidth *cfs_b)
 ### 时间资源补充
 
 `cfs_bandwidth`管理了一个时间池，上面提到的`period_timer`会定期的补充资源池。首先研究一下这个定时器的启动逻辑，`period_timer`的启动函数为`start_cfs_bandwidth`，该函数的调用发生在两处：
+
 * `assign_cfs_rq_runtime`: `cfs_rq`每一次申请时间资源（仅对于设定了quota的任务组）时都会启动定时器（如果定时器还没启动），这样做的好处在于如果任务组没有任务在执行，时间资源始终处于满额，不需要触发更新。
 * `throttle_cfs_rq`: 第一个被限流的`cfs_rq`尝试启动定时器，这样做的目的是确保被限流`cfs_rq`有机会被唤醒。
 
@@ -170,6 +174,7 @@ static enum hrtimer_restart sched_cfs_period_timer(struct hrtimer *timer)
 ```
 
 `do_sched_cfs_period_timer`的结果会影响是否重启定时器，让我们看看`do_sched_cfs_period_timer`是如何填充时间资源池的。重置时间池的函数是`__refill_cfs_bandwidth_runtime`，在执行前需要检查一些可以不进行时间填充的特殊情况：
+
 * 第一种是`quota`无限，此时`cfs_rq`申请多少就给多少不需要时间池管理
 * 第二种情况是时间池是满的，不需要重置，那么第二种情况如何检查呢？`cfs_b->idle`在时间池填充后检查任务组是否有限流链表是否为空，如果为空此时此刻时间池会处于满的状态，`cfs_b->idle`被标记为`1`，那么`idle`什么时候会被重新标记为`0`呢？当时间池的资源被申请或者主动分发到`cfs_rq`用于解除限流时，`idle`被重置为`0`，表示资源不满。因此当重置资源时状态处于`idle`并且当前无被限流的`cfs_rq`就可以认为资源在这个周期内没有发生过分配。
 这两种情况下跳转到`out_deactivate`返回值为`1`，告诉上层当前处于`idle`状态，定时器不需要再重启了。注意区分一下上层函数的局部变量`idle`和`cfs_b->idle`，含义存在差异。
@@ -272,7 +277,7 @@ next:
 
 ### 节点端时间申请
 
-`cfs_rq`会在剩余时间不足时向`task_group`申请时间片，如果申请失败就会产生限流，将`cfs_rq`挂入限流链表。申请时间需要清楚当前的剩余时间，因此在时间信息更新时比如`tick`或者调度发生时都会进行检查（典型函数就是`update_curr`）。
+`cfs_rq`会在剩余时间不足时向`task_group`申请时间片，如果申请失败就会产生限流，将`cfs_rq`挂入限流链表。申请时间需要清楚当前的剩余时间，因此在时间信息更新时比如Tick或者调度发生时都会进行检查（典型函数就是`update_curr`）。
 
 剩余时间的检查和不足时的申请由`account_cfs_rq_runtime`完成，首先`cfs_bandwidth_used()`需要检查系统是否开启相关带宽控制，`cfs_rq->runtime_enabled`则是检查`cfs_rq`是否受带宽控制，该状态由中心端的`quota`影响，如果`quota`为	`RUNTIME_INF`则不存在带宽限制。
 
@@ -287,10 +292,13 @@ void account_cfs_rq_runtime(struct cfs_rq *cfs_rq， u64 delta_exec)
     __account_cfs_rq_runtime(cfs_rq， delta_exec);
 }
 ```
+
 假设是一个配置了带宽控制的场景，重点关注函数`__account_cfs_rq_runtime`。`delta_exec`是本次消耗的时间，该段代码不复杂
+
 * 首先更新剩余时间，然后检查剩余时间是否过期，如果当前周期已经过去了，剩余的时间也就不做数了需要重新申请，`runtime_remaining`也被降为0。
 * 如果此时剩余时间小于等于零了（很有可能用超，tick的精度不高时还会超很多，比如极端情况下剩余0.1ms的运行时间时投入运行，tick精度为10ms，此时会多用9.9ms）就需要申请时间
 * 如果分配结束以后仍然不满足继续运行条件并且处于运行状态则设置调度标记，等到调度发生时进入限流过程。
+
 ```c
 static void __account_cfs_rq_runtime(struct cfs_rq *cfs_rq， u64 delta_exec)
 {
@@ -308,6 +316,7 @@ static void __account_cfs_rq_runtime(struct cfs_rq *cfs_rq， u64 delta_exec)
 ```
 
 `assign_cfs_rq_runtime`申请时间时要考虑当前`cfs_rq`用超的部分、时间池的剩余量等，尽力去分配时间，函数的返回值表示能否继续运行。具体的检查和分配流程可以看代码的注释。
+
 ```c
 static int assign_cfs_rq_runtime(struct cfs_rq *cfs_rq)
 {
@@ -353,11 +362,11 @@ static int assign_cfs_rq_runtime(struct cfs_rq *cfs_rq)
 每次更新时间信息发现`cfs_rq`的剩余时间不足时会发起时间申请，如果申请的时间无法满足需求就会设置调度标记，剩余时间的检查和限流出现在调度决策过程`pick_next_task_fair`中。
 
 在引入了限流以后选择任务的逻辑就复杂了一些，我提取了关键的代码如下，首先需要明确两点：
+
 * `cfs_rq`的剩余时间在`update_curr`内减少
 * 限流检查和操作发生在`check_cfs_rq_runtime`和`put_prev_entity`（会调用`check_cfs_rq_runtime`），因为有可能被限流的一定是`cfs_rq`才更新了运行时间信息的（也就是当前占有CPU执行权的相关调度实体），这样子就很好理解了。
 
 重新阅读一下调度决策的代码，这里我们将代码划分为三个Part，`again`到`simple`之间称为**part A**，`simple`到`done`之间称为**part B**，`idle`到结尾称为**Part C**。可以结合代码注释以及下方的流程图一起理解。
-
 
 ```mermaid
 graph TB
@@ -393,8 +402,6 @@ c2 -.-> |有新任务|astart
 null -.-> stop
 res -.-> stop
 ```
-
-<center>组调度+带宽控制-调度决策流程</center>
 
 * **Part A**：`do while`循环里自顶向下搜索`vruntime`最小的调度实体。假设一路搜索的过程中遇到的`cfs_rq`都不需要限流，我们将这种情况称为**情况1**，将限流检查出现限流`cfs_rq`的路径称作**情况2**。
   1. **情况1**，搜索会找到一个`vruntime`最小的调度实体，然后采取了一个算法搜索共同祖先，并在搜索过程中分别更新`cfs_rq->curr`，在`put_prev_entity`中会做限流检查，可以看到限流过程是自底向上的，这样会导致一个结果，当一个`cfs_rq`解除限流时能否参与调度还要看其父层级的`cfs_rq`是否处于限流状态；
@@ -495,6 +502,7 @@ idle:
 ```
 
 上面是发生限流的位置，限流一个`cfs_rq`具体要做什么呢？`check_cfs_rq_runtime`首先会检查是否满足限流条件：
+
 * 开启了相关系统层面CONFIG
 * 设置了`cfs_rq`的带宽控制参数
 * 已经没有了剩余时间
@@ -521,6 +529,7 @@ static bool check_cfs_rq_runtime(struct cfs_rq *cfs_rq)
 ```
 
 限流一个`cfs_rq`除了要将`cfs_rq`挂入限流链表外，还有很多额外的工作。
+
 * 首先考虑到限流信息的统计问题，`walk_tg_tree_from`会自顶向下和自低向上分别遍历执行一些函数，在这里自顶向下会执行`tg_throttle_down`，自低向上执行`tg_nop`(可以理解为什么也不做)，在`tg_throttle_down`中会自增`tg->throttle_count`，可以快速判断是否处于限流状态。父tg限流导致的连坐也被认为是被限流，如果限流个数从0到1，说明开始进入限流的状态，此时要设置进入限流状态的时间戳，退出限流时（计数从1降到0）累计限流时长。
 * 第二步，要将被限流的`cfs_rq`对应的`group-se`移出所在的`cfs_rq`，这个过程会导致一批`se`不参与调度，同时会影响`cfs_rq`的负载，所以需要递归向上更新每一层`cfs_rq`的任务数量`h_nr_running`和`nr_running`以及负载权重`load.weight`，如果权重降为0（不会被分配时间了），还需要触发连锁的移除。
 * 第三步，设置当前`cfs_rq`处于限流状态，设定限流的开始时间戳。
@@ -682,6 +691,7 @@ static void __return_cfs_rq_runtime(struct cfs_rq *cfs_rq)
 ```
 
 尝试启动`slack_timer`也是有一点讲究的，预期是延迟`5ms`执行，但是在启动前需要检查一下是不是已经触发或者即触发`period_timer`重置时间池，如果即将重置那就不再需要这些`slack`时间，都多余了嗷。因此`runtime_refresh_within`会检查`period_timer`距离被触发的时间是否超过`7ms = 5ms (cfs_bandwidth_slack_period) + 2ms (min_bandwidth_expiration)`。
+
 ```c
 static void start_cfs_slack_bandwidth(struct cfs_bandwidth *cfs_b)
 {
@@ -696,8 +706,8 @@ static void start_cfs_slack_bandwidth(struct cfs_bandwidth *cfs_b)
 			HRTIMER_MODE_REL);
 }
 ```
-假设`slack_timer`设置成功也如期触发，在`cfs_bandwidth`初始化时设置好的回调函数`sched_cfs_slack_timer`就会被执行，回调函数会再调用`do_sched_cfs_slack_timer`处理。做的事情和`period_timer`操作是一样的，将当前资源池的时间用于唤醒被限流的`cfs_rq`们。在正式分发前需要再次检查`period_timer`是不是即将触发，如果距离时间资源池重置还有一段时间就将当前时间资源池的时间分发到各个被限流的`cfs_rq`上，解除限流。
 
+假设`slack_timer`设置成功也如期触发，在`cfs_bandwidth`初始化时设置好的回调函数`sched_cfs_slack_timer`就会被执行，回调函数会再调用`do_sched_cfs_slack_timer`处理。做的事情和`period_timer`操作是一样的，将当前资源池的时间用于唤醒被限流的`cfs_rq`们。在正式分发前需要再次检查`period_timer`是不是即将触发，如果距离时间资源池重置还有一段时间就将当前时间资源池的时间分发到各个被限流的`cfs_rq`上，解除限流。
 
 ```c
 static void do_sched_cfs_slack_timer(struct cfs_bandwidth *cfs_b)

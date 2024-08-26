@@ -1,8 +1,8 @@
-<!-- CFS 新任务task创建 -->
+# 新任务的创建流程
 
 ## 前言
 
-新任务产生接口有`clone()`、`fork()`等系统调用，这些系统调用的都是通过`do_fork()`函数实现。本文主要对`do_fork()`中`CFS`新任务的调度初始化过程进行了探究，看看一个`CFS`新任务如何完成调度信息的初始化以及进入就绪队列的。
+新任务产生接口有`clone()`、`fork()`等系统调用，这些系统调用的都是通过`do_fork()`函数实现。本文主要对`do_fork()`中CFS新任务的调度初始化过程进行了探究，看看一个CFS新任务如何完成调度信息的初始化以及进入就绪队列的。
 
 ## CFS的调度信息初始化
 
@@ -16,6 +16,7 @@ long _do_fork(...)
 	wake_up_new_task(p);
 }
 ```
+
 在`_do_fork()`中大量的初始化操作在`copy_process()`中完成，其中和调度初始化有关的由`sched_fork()`完成。
 
 ### 优先级与调度类初始化
@@ -57,15 +58,15 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 
 `sched_fork()`函数在`core.c`中，在最后一行之前都是调度通用信息的初始化:
 
-1. `__sched_fork()`将任务的CFS相关数据清零， 设置`p->state`为`TASK_NEW`表示`task`还在初始化过程中避免被调度。
-2. 将`prio`设置为`current->normal_prio`是一个比较关键的点，在`Linux`中`prio`是调度决策时使用的优先级，新任务的优先级默认会继承父进程的优先级，但是继承的必须是`normal_prio`，因为`prio`在特殊情况下会出现临时提高的情况，有可能不是任务正常的优先级。
-3. `sched_reset_on_fork`标志位的处理，设置此标志位时新任务需要重置优先级为`120`（`120`是`nice=0`的CFS任务对应的优先级），调度策略`policy`为`SCHED_NORMAL`。`set_load_weight()`会更新任务的权重信息。如果没有该标志位，自然使用的是父进程的优先级信息。
+1. `__sched_fork()`将任务的CFS相关数据清零， 设置`p->state`为`TASK_NEW`表示Task还在初始化过程中避免被调度。
+2. 将`prio`设置为`current->normal_prio`是一个比较关键的点，在Linux中`prio`是调度决策时使用的优先级，新任务的优先级默认会继承父进程的优先级，但是继承的必须是`normal_prio`，因为`prio`在特殊情况下会出现临时提高的情况，有可能不是任务正常的优先级。
+3. `sched_reset_on_fork`标志位的处理，设置此标志位时新任务需要重置优先级为`120`（`120`是Nice值为0的CFS任务对应的优先级），调度策略`policy`为`SCHED_NORMAL`。`set_load_weight()`会更新任务的权重信息。如果没有该标志位，自然使用的是父进程的优先级信息。
 4. 根据`prio`识别和设置所属调度类
-5. 关键一步，如果所属的调度类是`fair_sched_class`会调用`CFS`调度器的`task_fork()`函数，在CFS中的对应实现为`task_fork_fair()`。
+5. 关键一步，如果所属的调度类是`fair_sched_class`会调用CFS调度器的`task_fork()`函数，在CFS中的对应实现为`task_fork_fair()`。
 
 ### vruntime初始化
 
-截止目前为止，`task`的调度策略、优先级、权重信息（如果是`CFS`）都已经通过拷贝父进程或者重置的方式初始化完成。但是作为一个`normal-task`，`CFS`调度所依赖的`vruntime`还未初始化。`task_fork_fair`会初始化新任务的`vruntime`。
+截止目前为止，Task的调度策略、优先级、权重信息（如果是CFS）都已经通过拷贝父进程或者重置的方式初始化完成。但是作为一个Fair-Task，CFS调度所依赖的`vruntime`还未初始化。`task_fork_fair`会初始化新任务的`vruntime`。
 
 ```c
 static void task_fork_fair(struct task_struct *p)
@@ -94,7 +95,7 @@ static void task_fork_fair(struct task_struct *p)
 
 **1.** 更新`rq`的时钟信息，后续如果需要更新`curr`的`vruntime`会用到
 
-**2.** 检查`curr`是否存在，`curr`是当前`CFS`队列中正在运行`task`，如果`curr`存在说明是`curr`调用的`fork`在创建新任务，此时需要先更新`curr`的`vruntime`再让子任务继承。`update_curr()`核心就做两件事，更新`curr`的`vruntime`，更新`cfs_rq`的`min_vruntime`。如果`curr`不存在说明`fork`的调用者不归`fair_sched_class`管辖，可能是`rt-task`或者`dl-task`创建的子进程，此时不涉及到`vruntime`的更新。
+**2.** 检查`curr`是否存在，`curr`是当前CFS队列中正在运行Task，如果`curr`存在说明是`curr`调用的`fork`在创建新任务，此时需要先更新`curr`的`vruntime`再让子任务继承。`update_curr()`核心就做两件事，更新`curr`的`vruntime`，更新`cfs_rq`的`min_vruntime`。如果`curr`不存在说明`fork`的调用者不归`fair_sched_class`管辖，可能是Realtime-Task或者Deadline-Task创建的子进程，此时不涉及到`vruntime`的更新。
 
 ```c
 static void update_curr(struct cfs_rq *cfs_rq)
@@ -104,7 +105,7 @@ static void update_curr(struct cfs_rq *cfs_rq)
 }
 ```
 
-**3.** 关键一步`place_entity()`设置新任务的`vruntime`，该值来源有两个，一是`cfs_rq->min_vruntime`的基础上加上一点惩罚，二是继承来自父进程的`vruntime`，取两者间的最大值。`place_entity`会惩罚新创建的`task`，因为当前的调度周期已经分配给任务队列中的任务了，如果直接插入会影响其他的任务在这个调度周期内的运行时间。这里的`sched_feat(START_DEBIT)`是一个宏，会检查`__SCHED_FEAT_START_DEBIT`这个特性是否开启。
+**3.** 关键一步`place_entity()`设置新任务的`vruntime`，该值来源有两个，一是`cfs_rq->min_vruntime`的基础上加上一点惩罚，二是继承来自父进程的`vruntime`，取两者间的最大值。`place_entity`会惩罚新创建的Task，因为当前的调度周期已经分配给任务队列中的任务了，如果直接插入会影响其他的任务在这个调度周期内的运行时间。这里的`sched_feat(START_DEBIT)`是一个宏，会检查`__SCHED_FEAT_START_DEBIT`这个特性是否开启。
 
 ```c
 static void
@@ -120,7 +121,7 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int initial)
 }
 ```
 
-**3.1** 既然要惩罚新进程，给他的`vruntime`加多少合适呢？`sched_vslice(cfs_rq, se)`在当前队列的权重基础之上考虑设定值，关注一下`sched_vslice()`的实现，代码如下，该函数计算了一个即将被插入就绪队列的`task`的`vruntime slice`。`calc_delta_fair`之前分析过就是将一个`wall-time`按照任务的权重信息转化为虚拟时间。`sched_slice`和`sched_vslice`只有一字之差，该函数计算的是一个即将被插入就绪队列的`wall-time slice`。总结`sched_vslice`的实现就是计算即将被插入就绪队列的`wall-time slice`，再按照权重信息转换为虚拟时间得到`vruntime slice`。
+**3.1** 既然要惩罚新进程，给他的`vruntime`加多少合适呢？`sched_vslice(cfs_rq, se)`在当前队列的权重基础之上考虑设定值，关注一下`sched_vslice()`的实现，代码如下，该函数计算了一个即将被插入就绪队列的Task的`vruntime`时间片。`calc_delta_fair`之前分析过就是将一个Wall-Time按照任务的权重信息转化为虚拟时间。`sched_slice`和`sched_vslice`只有一字之差，该函数计算的是一个即将被插入就绪队列的Wall-Time时间片。总结`sched_vslice`的实现就是计算即将被插入就绪队列的Wall-Time时间片，再按照权重信息转换为虚拟时间得到`vruntime`时间片。
 
 ```c
 static u64 sched_vslice(struct cfs_rq *cfs_rq, struct sched_entity *se)
@@ -129,7 +130,7 @@ static u64 sched_vslice(struct cfs_rq *cfs_rq, struct sched_entity *se)
 }
 ```
 
-`sched_slice`采取了一个很巧妙的设计，代码如下所示，`sched_slice`虚构出新任务加入队列以后的队列状态，重新计算调度周期和`cfs_rq`的权重信息，在此基础上计算该状态下新任务的时间`wall-time`占比。需要注意的是这里只是虚构的计算，因为`se`还没有正式进入队列中，此时中间的计算结果都存储在局部变量中，并没有真正修改`cfs_rq`的整体权重信息。
+`sched_slice`采取了一个很巧妙的设计，代码如下所示，`sched_slice`虚构出新任务加入队列以后的队列状态，重新计算调度周期和`cfs_rq`的权重信息，在此基础上计算该状态下新任务的时间Wall-Time占比。需要注意的是这里只是虚构的计算，因为`se`还没有正式进入队列中，此时中间的计算结果都存储在局部变量中，并没有真正修改`cfs_rq`的整体权重信息。
 
 **NOTE**: `for_each_sched_entity`与组调度有关，在这里可以忽略。
 
@@ -159,13 +160,13 @@ static u64 sched_slice(struct cfs_rq *cfs_rq, struct sched_entity *se)
 }
 ```
 
-**3.2** 更新`new-task`的`vruntime`，这里用了`max_vruntime`取当前`se->vruntime`和`vruntime`之间的较大值，要保证`vruntime`永远保持单调不减。
+**3.2** 更新新任务的`vruntime`，这里用了`max_vruntime`取当前`se->vruntime`和`vruntime`之间的较大值，要保证`vruntime`永远保持单调不减。
 
 **4.** `sysctl_sched_child_runs_first`是一个系统参数，表示让新创建的进程优先运行。当`curr`存在（`curr`创建了新任务）并且`curr`的`vruntime`小于新任务的`vruntime`，此时需要对调父子进程间的`vruntime`，然后设置`curr`的`TIF_NEED_RESCHED`标志位，在下一个调度时机出现时抢占`curr`。
 
-**5.** 最后一步，设置新任务的`vruntime`为相对值，因为有可能由于负载均衡等原因新任务唤醒时的获取的`CPU`并不是当前计算`vruntime`的`CPU`。在唤醒时新任务的`vruntime`会加上`cfs_rq`的`min_vruntime`。
+**5.** 最后一步，设置新任务的`vruntime`为相对值，因为有可能由于负载均衡等原因新任务唤醒时的获取的CPU并不是当前计算`vruntime`的CPU。在唤醒时新任务的`vruntime`会加上`cfs_rq`的`min_vruntime`。
 
-至此，一个新的`normal-task`被`cfs_rq`调度需要的优先级（权重值）、`vruntime`都已就绪。下一步就需要正式将新任务放入`cfs_rq`中。
+至此，一个新的Fair-Task被`cfs_rq`调度需要的优先级（权重值）、`vruntime`都已就绪。下一步就需要正式将新任务放入`cfs_rq`中。
 
 ## 新任务入队
 
@@ -208,7 +209,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 }
 ```
 
-`enqueue_entity()`负责修复新任务的`vruntime`，然后按照`vruntime`将其插入到`rb-tree`的正确位置。
+`enqueue_entity()`负责修正新任务的`vruntime`，然后按照`vruntime`将其插入到`rb-tree`的正确位置。
 
 ```c
 static void
@@ -298,7 +299,7 @@ void check_preempt_curr(struct rq *rq, struct task_struct *p, int flags)
 }
 ```
 
-抢占存在两种情况，第一种是同一调度类中的`task`之间互相抢占，另一种是高优先级调度类的`task`抢占低优先级调度类的`task`。
+抢占存在两种情况，第一种是同一调度类中的Task之间互相抢占，另一种是高优先级调度类的Task抢占低优先级调度类的Task。
 
 **1.** 对于第一种情况，具体的抢占策略交给调度类自己实现，对应到CFS中就是`check_preempt_wakeup()`，代码如下。
 
@@ -308,7 +309,6 @@ void check_preempt_curr(struct rq *rq, struct task_struct *p, int flags)
 * 非IDLE任务抢占IDLE任务时，不需要检查，直接标记抢占成功。
 * 试图发起抢占的任务是BATCH或者IDLE策略时，不需要检查，抢占失败。
 * 没有开启唤醒抢占特性时，不需要检查，抢占失败。
-
 
 ```c
 static void check_preempt_wakeup(struct rq *rq, struct task_struct *p, int wake_flags)
@@ -339,7 +339,7 @@ preempt:
 }
 ```
 
-如果以上条件都不满足时，还需要检查抢占是否满足唤醒粒度，代码如下。唤醒粒度的目的是减少不必要的唤醒抢占，如果`se->vruntime`仅仅比`curr->vruntime`大一点点就发生抢占是不合理的，抢占也是有开销的。因此抢占需要保证`vruntime`之间的差值超过`gran`，`gran`由唤醒粒度`sysctl_sched_wakeup_granularity`影响（默认值为`1 msec * (1+ logi(nrcpu))`，比如8核`CPu`的默认唤醒粒度为4 msec）。但是此处没有直接使用唤醒粒度，而是根据`se`的权重信息将`sysctl_sched_wakeup_granularity`转化为`vruntime`，这样做的目的是如果`se`的优先级高于`curr`，`gran`会变小，一定程度上提高了高优先级抢占低优先级的概率。
+如果以上条件都不满足时，还需要检查抢占是否满足唤醒粒度，代码如下。唤醒粒度的目的是减少不必要的唤醒抢占，如果`se->vruntime`仅仅比`curr->vruntime`大一点点就发生抢占是不合理的，抢占也是有开销的。因此抢占需要保证`vruntime`之间的差值超过`gran`，`gran`由唤醒粒度`sysctl_sched_wakeup_granularity`影响（默认值为`1 msec * (1+ logi(nrcpu))`，比如8核CPU的默认唤醒粒度为4 msec）。但是此处没有直接使用唤醒粒度，而是根据`se`的权重信息将`sysctl_sched_wakeup_granularity`转化为`vruntime`，这样做的目的是如果`se`的优先级高于`curr`，`gran`会变小，一定程度上提高了高优先级抢占低优先级的概率。
 
 ```c
 /*
@@ -401,6 +401,5 @@ subgraph init_sched_info
 copy_process --> sched_fork --> task_fork --> place_entity
 end
 ```
-<center>CFS新任务创建的关键函数调用链</center>
 
-一个CFS的`task`从开始创建到进入可以被调度的状态需要两步（仅考虑调度），第一步初始化调度的信息。主要在`sched_fork()`中完成，在初始化进程的优先级、调度类、权重信息以后，如果是`CFS`进程调用`task_fork_fair`初始化`vruntime`。第二步正式将初始化好的新任务放入就绪队列，在这个过程中会更新`vruntime`然后放入`rb-tree`中，在结束前还会进行一次抢占检查，检查新任务能否抢占当前运行的任务。
+一个CFS的Task从开始创建到进入可以被调度的状态需要两步（仅考虑调度），第一步初始化调度的信息。主要在`sched_fork()`中完成，在初始化进程的优先级、调度类、权重信息以后，如果是CFS进程调用`task_fork_fair()`初始化`vruntime`。第二步正式将初始化好的新任务放入就绪队列，在这个过程中会更新`vruntime`然后放入`rb-tree`中，在结束前还会进行一次抢占检查，检查新任务能否抢占当前运行的任务。

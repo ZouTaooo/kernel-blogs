@@ -1,145 +1,3 @@
-<!-- # 伙伴系统（三）内存分配流程 -->
-## 前言
-
-伙伴系统的内存分配API解析，基于Linux 2.6.25。
-
-## GFP_MASK
-
-GFP是get free page的缩写，GFP_MASK是一系列内存分配的掩码，指导伙伴系统寻找合适的内存块进行分配，同时在分配过程中按照掩码的指示进行内存相关的操作，比如内存回收、分配失败后的行为等。
-
-以下四个GFP_MASK指示了优先从哪个zone上进行内存分配。内核提供了`gfp_zone`函数负责转换GFP_MASK为`zone_type`。
-
-`ZONE_NORMAL`和`ZONE_MOVABLE`并没有显式的GFP_MASK对应。
-
-当同时指定`__GFP_HIGHMEM`和`__GFP_MOVABLE`时会返回`ZONE_MOVABLE`，表示从虚拟区域`ZONE_MOVABLE`中分配内存，该区域和内存碎片以及虚拟化中内存的热插拔相关。
-
-当条件都不满足时就会返回`ZONE_NORMAL`。
-
-根据返回的`zone_type`区域类型，内存分配API就能确定需要扫描的内存区域有哪些，内存区域按照珍贵程度由低到高排序为ZONE_MOVEABLE、ZONE_HIGHMEM、ZONE_NORMAL、ZONE_DMA32、ZONE_DMA，当返回类型为ZONE_NORMAL时扫描的区域包括NORMAL、DMA32和DMA，返回类型为HIGHMEM时扫描的区域则包括HIGHMEM、NORMAL、DMA32、DMA，以此类推。
-
-比较特殊的是当返回`ZONE_MOVABLE`时会在特殊的虚拟内存区进行内存分配。
-
-```c
-#define __GFP_DMA ((__force gfp_t)0x01u)
-#define __GFP_HIGHMEM ((__force gfp_t)0x02u)
-#define __GFP_DMA32 ((__force gfp_t)0x04u)
-#define __GFP_MOVABLE ((__force gfp_t)0x100000u)  /* Page is movable */
-
-static inline enum zone_type gfp_zone(gfp_t flags)
-{
-#ifdef CONFIG_ZONE_DMA
-    if (flags & __GFP_DMA)
-        return ZONE_DMA;
-#endif
-#ifdef CONFIG_ZONE_DMA32
-    if (flags & __GFP_DMA32)
-        return ZONE_DMA32;
-#endif
-    if ((flags & (__GFP_HIGHMEM | __GFP_MOVABLE)) ==
-            (__GFP_HIGHMEM | __GFP_MOVABLE))
-        return ZONE_MOVABLE;
-#ifdef CONFIG_HIGHMEM
-    if (flags & __GFP_HIGHMEM)
-        return ZONE_HIGHMEM;
-#endif
-    return ZONE_NORMAL;
-}
-```
-
-其他用于指挥内存分配操作的flag如下:
-
-```c
-#define __GFP_WAIT ((__force gfp_t)0x10u) /* Can wait and reschedule? */
-#define __GFP_HIGH ((__force gfp_t)0x20u) /* Should access emergency pools? */
-#define __GFP_IO ((__force gfp_t)0x40u) /* Can start physical IO? */
-#define __GFP_FS ((__force gfp_t)0x80u) /* Can call down to low-level FS? */
-#define __GFP_COLD ((__force gfp_t)0x100u) /* Cache-cold page required */
-#define __GFP_NOWARN ((__force gfp_t)0x200u) /* Suppress page allocation failure warning */
-#define __GFP_REPEAT ((__force gfp_t)0x400u) /* See above */
-#define __GFP_NOFAIL ((__force gfp_t)0x800u) /* See above */
-#define __GFP_NORETRY ((__force gfp_t)0x1000u)/* See above */
-#define __GFP_COMP ((__force gfp_t)0x4000u)/* Add compound page metadata */
-#define __GFP_ZERO ((__force gfp_t)0x8000u)/* Return zeroed page on success */
-#define __GFP_NOMEMALLOC ((__force gfp_t)0x10000u) /* Don't use emergency reserves */
-#define __GFP_HARDWALL   ((__force gfp_t)0x20000u) /* Enforce hardwall cpuset memory allocs */
-#define __GFP_THISNODE ((__force gfp_t)0x40000u)/* No fallback, no policies */
-#define __GFP_RECLAIMABLE ((__force gfp_t)0x80000u) /* Page is reclaimable */
-#define __GFP_MOVABLE ((__force gfp_t)0x100000u)  /* Page is movable */
-```
-
-- `__GFP_WAIT`: 允许中断和重新调度
-- `__GFP_HIGH`: 分配内存很紧急
-- `__GFP_IO`: 分配过程允许IO，内存回收时只有设置该标志才能将内存数据刷到磁盘
-- `__GFP_FS`: 允许vfs操作，在vfs相关子系统中需禁用，否则可能引起vfs递归调用。
-- `__GFP_COLD`: 分配冷页
-- `__GFP_NOWARN`: 分配失败时不告警
-- `__GFP_REPEAT`: 分配失败时尝试几次后再放弃
-- `__GFP_NOFAIL`: 分配失败后不断尝试直到成功
-- `__GFP_NORETRY`: 分配失败后不重试
-- `__GFP_COMP`: 分配复合页
-- `__GFP_ZERO`: 分配成功后将内存清零
-- `__GFP_NOMEMALLOC`: 不使用紧急保留链表（MIGRATE_RESERVER）
-- `__GFP_HARDWALL`: 只在当前进程允许运行的cpu所在node上进行内存分配
-- `__GFP_THISNODE`: 只允许在当前node上分配，不使用node的备选列表
-- `__GFP_RECLAIMABLE` 、 `__GFP_MOVABLE`: 分配的页是可回收或者可移动的，需要在对应的空闲链表中分配。
-
-在进行内存分配时会用到以上以下划线开头的多个flag的组合，常用的GFP_MASK组合如下:
-
-```c
-
-#define __GFP_BITS_SHIFT 21 /* Room for 21 __GFP_FOO bits */
-#define __GFP_BITS_MASK ((__force gfp_t)((1 << __GFP_BITS_SHIFT) - 1))
-
-/* This equals 0, but use constants in case they ever change */
-#define GFP_NOWAIT (GFP_ATOMIC & ~__GFP_HIGH)
-/* GFP_ATOMIC means both !wait (__GFP_WAIT not set) and use emergency pool */
-#define GFP_ATOMIC (__GFP_HIGH)
-#define GFP_NOIO (__GFP_WAIT)
-#define GFP_NOFS (__GFP_WAIT | __GFP_IO)
-#define GFP_KERNEL (__GFP_WAIT | __GFP_IO | __GFP_FS)
-#define GFP_TEMPORARY (__GFP_WAIT | __GFP_IO | __GFP_FS | \
-             __GFP_RECLAIMABLE)
-#define GFP_USER (__GFP_WAIT | __GFP_IO | __GFP_FS | __GFP_HARDWALL)
-#define GFP_HIGHUSER (__GFP_WAIT | __GFP_IO | __GFP_FS | __GFP_HARDWALL | \
-             __GFP_HIGHMEM)
-#define GFP_HIGHUSER_MOVABLE (__GFP_WAIT | __GFP_IO | __GFP_FS | \
-                 __GFP_HARDWALL | __GFP_HIGHMEM | \
-                 __GFP_MOVABLE)
-#define GFP_NOFS_PAGECACHE (__GFP_WAIT | __GFP_IO | __GFP_MOVABLE)
-#define GFP_USER_PAGECACHE (__GFP_WAIT | __GFP_IO | __GFP_FS | \
-                 __GFP_HARDWALL | __GFP_MOVABLE)
-#define GFP_HIGHUSER_PAGECACHE (__GFP_WAIT | __GFP_IO | __GFP_FS | \
-                 __GFP_HARDWALL | __GFP_HIGHMEM | \
-                 __GFP_MOVABLE)
-
-#ifdef CONFIG_NUMA
-#define GFP_THISNODE (__GFP_THISNODE | __GFP_NOWARN | __GFP_NORETRY)
-#else
-#define GFP_THISNODE ((__force gfp_t)0)
-#endif
-
-/* This mask makes up all the page movable related flags */
-#define GFP_MOVABLE_MASK (__GFP_RECLAIMABLE|__GFP_MOVABLE)
-
-/* Control page allocator reclaim behavior */
-#define GFP_RECLAIM_MASK (__GFP_WAIT|__GFP_HIGH|__GFP_IO|__GFP_FS|\
-            __GFP_NOWARN|__GFP_REPEAT|__GFP_NOFAIL|\
-            __GFP_NORETRY|__GFP_NOMEMALLOC)
-
-/* Control allocation constraints */
-#define GFP_CONSTRAINT_MASK (__GFP_HARDWALL|__GFP_THISNODE)
-
-/* Do not use these with a slab allocator */
-#define GFP_SLAB_BUG_MASK (__GFP_DMA32|__GFP_HIGHMEM|~__GFP_BITS_MASK)
-
-/* Flag - indicates that the buffer will be suitable for DMA.  Ignored on some
-   platforms, used as appropriate on others */
-
-#define GFP_DMA  __GFP_DMA
-
-/* 4GB DMA on some platforms */
-#define GFP_DMA32 __GFP_DMA32
-```
 
 ## alloc_pages_node
 
@@ -158,6 +16,7 @@ get_free_pages --> alloc_pages
 alloc_pages --> alloc_pages_node
 
 ```
+
 <center>伙伴系统内存分配API</center>
 
 在`alloc_pages_node`会对分配阶以及node id进行检查，如果合法则调用`__alloc_pages`进行内存分配。
@@ -354,6 +213,7 @@ B -->|1| E
 B -->|2| C
 
 ```
+
 <center>__rmqueue的执行路径</center>
 
 `__rmqueue_smallest`尝试从满足`order`和迁移类型的自由链表中进行内存块的分配，如果对应分配阶的自由链表为空就会从更大分配阶的自由链表上分配内存块并进行分裂，`expand`负责将分裂后的内存块填入到对应的自由链表中。

@@ -166,7 +166,7 @@ E[____cache_alloc] --> cache_alloc_refill --> cache_grow --> kmem_getpages --> a
 
 `kmalloc`如果分配的size正好是内核已经存在的size缓存，此时直接将对应的`kmem_cache`作为参数调用`kmem_cache_alloc`分配。但如果是一个一般size的内存块，此时会通过`__find_general_cachep`找到一个适合大小的`kmem_cache`去分配。
 
-最后所有的分配都会落到`__cache_alloc`上。分配有两种路径，第一种直接从`per-cpu`的`array_cache`上分配。如果缓存中无法满足分配，再尝试从slab中批量取出缓存对象放入`array_cache`中后再次进行分配。
+最后所有的分配都会落到`__cache_alloc`上。分配有两种路径，第一种直接从PER-CPU的`array_cache`上分配。如果缓存中无法满足分配，再尝试从slab中批量取出缓存对象放入`array_cache`中后再次进行分配。
 
 如果slab中的对象也不足了，`cache_grow`则会补充一定的`pgae`创建新的slab。可以看到在`cache_grow`中才会真正向伙伴系统申请页帧。
 ```c

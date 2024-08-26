@@ -32,6 +32,7 @@ static int prep_new_page(struct page *page, int order, gfp_t gfp_flags)
     ...
 }
 ```
+
 在`prep_compound_page`中，`set_compound_page_dtor`会设置好析构函数用于后续释放复合页，存放位置为`page[1].lru.next`。`set_compound_order`设置复合页的分配阶，存放位置为`page[1].lru.prev`。可以看到析构函数和分配阶都是存放在复合页的第一个tail page中。
 
 然后为head page以及每个tail page设置好PG_flag，`__SetPageHead`给**head page**的flags会添加`PG_compound`，而`__SetPageTail`会对每一个**tail page**同时设置`PG_reclaim`和`PG_compound`，用以区分head page和tail page。
