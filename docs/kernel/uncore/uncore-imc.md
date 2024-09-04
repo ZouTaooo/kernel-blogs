@@ -23,10 +23,10 @@
 
 * 对于每一个和需要测量的事件相关的box
    1. enable box 接收freeze信号去 start/stop/re-start所有的寄存器
-   eg. 设置MC_CHy_PCI_PMON_BOX_CTL.frz_en为1，允许freeze当前box。
+   > eg. 设置MC_CHy_PCI_PMON_BOX_CTL.frz_en为1，允许freeze当前box。
    最好在监控活动中保持该位不变。
    2. freeze box的寄存器，准备设置监控活动
-   >eg. 设置MC_CHy_PCI_PMON_BOX_CTL.frz为1，停止box的计数活动，开始设置控制寄存器
+   > eg. 设置MC_CHy_PCI_PMON_BOX_CTL.frz为1，停止box的计数活动，开始设置控制寄存器
 * 对于每一个需要测量的事件
    1. 将所有的监控寄存器enable
    > eg. 设置MC_CHy_PCI_PMON_CTL1.en为1
@@ -36,11 +36,8 @@
 * 对于每一个和需要测量的事件相关的box
    1. 重置每个box中的寄存器，确保没有之前的监控活动留下的旧数据
       > For each CBo, set Cn_MSR_PMON_BOX_CTL[1:0] to 0x2.
-       
       > For each Intel® QPI Port, set Q_Py_PCI_PMON_BOX_CTL[1:0] to 0x2. Set PCU_MSR_PMON_BOX_CTL[1:0] to 0x2.
-      
       > For each Link, set R3QPI_PCI_PMON_BOX_CTL[1:0] to 0x2. Set R2PCIE_PCI_PMON_BOX_CTL[1:0] to 0x2
-
       > Note：可以看到以上box中没有提到UBox、iMC和HA，UBox是因为本身没有unit控制寄存器，iMC和HA则是因为unit控制寄存器中没有reset位。因此在UBox、HA以及iMC中的每一个DRAM通道需要通过将0写入数据寄存器手动重置。
 
    2. 在box level开启计数
@@ -102,7 +99,6 @@ MC_CHy_PCI_PMON_CTL{3:0}寄存器的字段定义如下：
 | rsv           | 17:16 | RV   | 0            | 保留位，必须为0            |
 | umask         | 15:8  | RW-V | 0            | subevent                   |
 | ev_sel        | 7:0   | RW-V | 0            | event                      |
-
 
 ##### 固定控制寄存器-MC_CHy_PCI_PMON_FIXED_CTL
 

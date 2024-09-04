@@ -7,8 +7,8 @@
 
 * `CBox`(`caching agent`)
 * `PCU`(`power controller unit`)
-* `iMC`(`integrated memory controller`) 
-* `HA`(`home agent`) 
+* `iMC`(`integrated memory controller`)
+* `HA`(`home agent`)
 * ......
 
 ## PMON
@@ -34,6 +34,7 @@
 配置了事件以后需要通知硬件控制器寄存器被修改，`.en`位必须被设置为`1`去开启计数。一旦`box`和全局级别的计数被使能，对应的数据寄存器就可以开始收集事件了。
 
 `uncore`还有一些高级的特性：
+
 * `.thresh`: 设置事件的阈值
 * `.invert`: 设置统计规则是高于阈值还是低于阈值
 * `.edge_det`: 统计事件变化次数

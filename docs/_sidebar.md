@@ -33,6 +33,7 @@
     - [slab分配器](kernel/memory/doc/slab.md)
     - [vmalloc&vfree](kernel/memory/doc/vmalloc.md)
     - [ZONE_MOVABLE](kernel/memory/doc/zone-movable.md)
+    - [meminfo](kernel/memory/doc/meminfo.md)
   - RDT & Resctrl
     - [Intel-RDT 技术浅析](kernel/rdt/intel-rdt.md)
     - [Resctrl使用说明书](kernel/rdt/resctrl-manual.md)
