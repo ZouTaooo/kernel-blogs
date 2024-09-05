@@ -1,4 +1,4 @@
-# 唤醒抢占粒度
+# sched_wakeup_granularity
 
 ## 前言
 
