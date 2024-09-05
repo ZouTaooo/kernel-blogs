@@ -265,7 +265,7 @@ static enum hrtimer_restart watchdog_timer_fn(struct hrtimer *hrtimer)
 
 ### cycles NMI
 
-在`cycles`计数器溢出触发的`NMI`回调函数`watchdog_overflow_callbac()k`（`kerne/watchdog_hld.c`）中检查`hardlockup`。
+在`cycles`计数器溢出触发的`NMI`回调函数`watchdog_overflow_callback()`（`kerne/watchdog_hld.c`）中检查`hardlockup`。
 
 ```c
 static void watchdog_overflow_callback(struct perf_event *event,
